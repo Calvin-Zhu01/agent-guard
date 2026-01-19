@@ -121,10 +121,20 @@ onUnmounted(() => {
 
 <template>
   <el-container class="layout-container">
-    <el-aside :width="isCollapse ? '64px' : '220px'" class="aside">
-      <div class="logo">
-        <span v-if="!isCollapse">AgentGuard</span>
-        <span v-else>AG</span>
+    <el-aside :width="isCollapse ? '64px' : '256px'" class="aside">
+      <div class="logo" @click="router.push('/dashboard')">
+        <img 
+          v-if="!isCollapse" 
+          src="/logo-horizontal.svg" 
+          alt="AgentGuard" 
+          class="logo-horizontal"
+        />
+        <img 
+          v-else 
+          src="/logo.svg" 
+          alt="AG" 
+          class="logo-icon"
+        />
       </div>
       <el-menu
         :default-active="activeMenu"
@@ -200,13 +210,30 @@ onUnmounted(() => {
 }
 
 .logo {
-  height: 60px;
+  height: 80px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  font-size: 20px;
-  font-weight: bold;
+  padding: 15px 5px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.logo:hover {
+  opacity: 0.8;
+}
+
+.logo-horizontal {
+  height: 64px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.logo-icon {
+  height: 52px;
+  width: 52px;
+  object-fit: contain;
 }
 
 .header {

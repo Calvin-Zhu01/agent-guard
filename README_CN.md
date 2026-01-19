@@ -1,14 +1,17 @@
 <p align="center">
-  <h1 align="center">🛡️ AgentGuard</h1>
-  <p align="center">
-    <strong>开源的 AI Agent 治理与监控平台</strong>
-  </p>
-  <p align="center">
-    帮助团队「管住自己到处跑的 AI Agent」，让 Agent 可控、可审计、算得清成本
-  </p>
-  <p align="center">
-    <a href="./README.md">English</a> | <a href="./README_CN.md">中文</a>
-  </p>
+  <img src="./frontend/public/logo-horizontal.svg" alt="AgentGuard" width="400" height="100" />
+</p>
+
+<p align="center">
+  <strong>AI Agent 治理与监控平台</strong>
+</p>
+
+<p align="center">
+  帮助团队「管住自己到处跑的 AI Agent」，让 Agent 可控、可审计、算得清成本
+</p>
+
+<p align="center">
+  <a href="./README.md">English</a> | <a href="./README_CN.md">中文</a>
 </p>
 
 ---

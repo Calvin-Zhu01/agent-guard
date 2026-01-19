@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <!-- 简洁渐变 -->
+    <linearGradient id="shieldGradientS" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#4FC3F7"/>
+      <stop offset="50%" style="stop-color:#1E88E5"/>
+      <stop offset="100%" style="stop-color:#0D47A1"/>
+    </linearGradient>
+
+    <!-- 光泽效果 -->
+    <linearGradient id="glossGradientS" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:0.4"/>
+      <stop offset="50%" style="stop-color:#FFFFFF;stop-opacity:0.1"/>
+      <stop offset="100%" style="stop-color:#FFFFFF;stop-opacity:0"/>
+    </linearGradient>
+
+    <!-- 边框渐变 -->
+    <linearGradient id="borderGradientS" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#81D4FA"/>
+      <stop offset="100%" style="stop-color:#0D47A1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 盾牌图标 -->
+  <g transform="translate(6, 6)">
+    <!-- 盾牌主体 -->
+    <path d="M54 9.6
+             L96 21.6
+             C99.6 22.8 102 26.4 102 30
+             L102 54
+             C102 74.4 84 93.6 54 105.6
+             C24 93.6 6 74.4 6 54
+             L6 30
+             C6 26.4 8.4 22.8 12 21.6
+             Z"
+          fill="url(#shieldGradientS)"
+          stroke="url(#borderGradientS)"
+          stroke-width="2.4"/>
+
+    <!-- 光泽层 -->
+    <path d="M54 12
+             L93.6 22.8
+             C96 24 98.4 26.4 98.4 28.8
+             L98.4 42
+             C72 48 36 48 9.6 42
+             L9.6 28.8
+             C9.6 26.4 12 24 14.4 22.8
+             Z"
+          fill="url(#glossGradientS)"/>
+
+    <!-- AG 文字 -->
+    <text x="54" y="62.4"
+          font-family="Arial, Helvetica, sans-serif"
+          font-size="31.2"
+          font-weight="bold"
+          fill="#FFFFFF"
+          text-anchor="middle"
+          dominant-baseline="middle">AG</text>
+  </g>
+</svg>
