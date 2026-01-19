@@ -1,0 +1,108 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: agent-guard
+  profiles:
+    active: dev
+
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:agent_guard}?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:root}
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: 0
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    # 跳过 MySQL 5.7 版本检查（建议升级到 MySQL 8.0+）
+    ignore-migration-patterns: "*:*"
+
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.agentguard.**.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    db-config:
+      id-type: assign_uuid
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+# JWT 配置
+jwt:
+  secret: ${JWT_SECRET:agentguard-secret-key-must-be-at-least-256-bits-long-for-hs256}
+  expiration: ${JWT_EXPIRATION:86400}
+
+logging:
+  level:
+    com.agentguard: DEBUG
+    org.springframework.security: DEBUG
+
+# 告警配置
+alert:
+  default-recipient: ${ALERT_DEFAULT_RECIPIENT:admin@agentguard.com}
+  email:
+    enabled: ${ALERT_EMAIL_ENABLED:false}
+    from: ${ALERT_EMAIL_FROM:}
+  webhook:
+    timeout: ${ALERT_WEBHOOK_TIMEOUT:10000}
+  # 通知重试配置
+  notification:
+    max-retry: ${ALERT_NOTIFICATION_MAX_RETRY:3}
+    retry-interval: ${ALERT_NOTIFICATION_RETRY_INTERVAL:1000}
+  # 定时任务配置
+  scheduler:
+    enabled: ${ALERT_SCHEDULER_ENABLED:true}
+    # 成本告警检查：每小时执行一次
+    cost:
+      cron: ${ALERT_SCHEDULER_COST_CRON:0 0 * * * ?}
+    # 错误率告警检查：每5分钟执行一次
+    error-rate:
+      cron: ${ALERT_SCHEDULER_ERROR_RATE_CRON:0 */5 * * * ?}
+      window-minutes: ${ALERT_SCHEDULER_ERROR_RATE_WINDOW:30}
+      threshold: ${ALERT_SCHEDULER_ERROR_RATE_THRESHOLD:0.1}
+    # 审批过期提醒：每10分钟执行一次
+    approval:
+      cron: ${ALERT_SCHEDULER_APPROVAL_CRON:0 */10 * * * ?}
+      reminder-minutes: ${ALERT_SCHEDULER_APPROVAL_REMINDER:30}
+    # 系统健康检查：每分钟执行一次
+    health:
+      cron: ${ALERT_SCHEDULER_HEALTH_CRON:0 * * * * ?}
+
+# Spring Boot Actuator 配置
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
+  health:
+    redis:
+      enabled: true
+    db:
+      enabled: true
