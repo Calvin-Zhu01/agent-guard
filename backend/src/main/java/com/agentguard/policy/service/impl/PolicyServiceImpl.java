@@ -22,6 +22,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -79,10 +80,10 @@ public class PolicyServiceImpl implements PolicyService {
 
         // 根据 sortBy 参数排序
         switch (StrUtil.blankToDefault(sortBy, "priority_desc")) {
-            case "priority_asc" -> wrapper.orderByAsc(PolicyDO::getPriority).orderByDesc(PolicyDO::getCreatedAt);
-            case "created_desc" -> wrapper.orderByDesc(PolicyDO::getCreatedAt);
-            case "created_asc" -> wrapper.orderByAsc(PolicyDO::getCreatedAt);
-            default -> wrapper.orderByDesc(PolicyDO::getPriority).orderByDesc(PolicyDO::getCreatedAt);
+            case "priority_asc" -> wrapper.orderByAsc(PolicyDO::getPriority).orderByDesc(PolicyDO::getUpdatedAt);
+            case "updated_desc" -> wrapper.orderByDesc(PolicyDO::getUpdatedAt);
+            case "updated_asc" -> wrapper.orderByAsc(PolicyDO::getUpdatedAt);
+            default -> wrapper.orderByDesc(PolicyDO::getPriority).orderByDesc(PolicyDO::getUpdatedAt);
         }
 
         Page<PolicyDO> entityPage = new Page<>(page.getCurrent(), page.getSize());
@@ -111,6 +112,8 @@ public class PolicyServiceImpl implements PolicyService {
 
         // 使用 Hutool 忽略空值拷贝
         BeanUtil.copyProperties(dto, policyDO, CopyOptions.create().ignoreNullValue());
+        
+        policyDO.setUpdatedAt(LocalDateTime.now());
 
         policyMapper.updateById(policyDO);
         return toDTO(policyDO);
@@ -132,6 +135,7 @@ public class PolicyServiceImpl implements PolicyService {
             throw new BusinessException(ErrorCode.POLICY_NOT_FOUND);
         }
         policyDO.setEnabled(true);
+        policyDO.setUpdatedAt(LocalDateTime.now());
         policyMapper.updateById(policyDO);
     }
 
@@ -143,6 +147,7 @@ public class PolicyServiceImpl implements PolicyService {
             throw new BusinessException(ErrorCode.POLICY_NOT_FOUND);
         }
         policyDO.setEnabled(false);
+        policyDO.setUpdatedAt(LocalDateTime.now());
         policyMapper.updateById(policyDO);
     }
 

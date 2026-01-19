@@ -54,7 +54,7 @@ public class PolicyController {
             @Parameter(description = "关键词（名称/描述）") @RequestParam(required = false) String keyword,
             @Parameter(description = "策略类型") @RequestParam(required = false) PolicyType type,
             @Parameter(description = "作用域") @RequestParam(required = false) PolicyScope scope,
-            @Parameter(description = "排序方式：priority_desc/priority_asc/created_desc/created_asc") @RequestParam(defaultValue = "priority_desc") String sortBy) {
+            @Parameter(description = "排序方式：priority_desc/priority_asc/updated_desc/updated_asc") @RequestParam(defaultValue = "priority_desc") String sortBy) {
         Page<PolicyDTO> page = new Page<>(current, size);
         return Result.success(policyService.page(page, keyword, type, scope, sortBy));
     }

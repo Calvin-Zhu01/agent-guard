@@ -99,6 +99,8 @@ public class AlertRuleServiceImpl implements AlertRuleService {
 
         // 使用 Hutool 忽略空值拷贝
         BeanUtil.copyProperties(dto, alertRuleDO, CopyOptions.create().ignoreNullValue());
+        
+        alertRuleDO.setUpdatedAt(java.time.LocalDateTime.now());
 
         alertRuleMapper.updateById(alertRuleDO);
         log.info("更新告警规则: id={}, name={}", alertRuleDO.getId(), alertRuleDO.getName());
@@ -122,6 +124,7 @@ public class AlertRuleServiceImpl implements AlertRuleService {
             throw new BusinessException(ErrorCode.ALERT_RULE_NOT_FOUND);
         }
         alertRuleDO.setEnabled(true);
+        alertRuleDO.setUpdatedAt(java.time.LocalDateTime.now());
         alertRuleMapper.updateById(alertRuleDO);
         log.info("启用告警规则: id={}, name={}", alertRuleDO.getId(), alertRuleDO.getName());
     }
@@ -134,6 +137,7 @@ public class AlertRuleServiceImpl implements AlertRuleService {
             throw new BusinessException(ErrorCode.ALERT_RULE_NOT_FOUND);
         }
         alertRuleDO.setEnabled(false);
+        alertRuleDO.setUpdatedAt(java.time.LocalDateTime.now());
         alertRuleMapper.updateById(alertRuleDO);
         log.info("停用告警规则: id={}, name={}", alertRuleDO.getId(), alertRuleDO.getName());
     }

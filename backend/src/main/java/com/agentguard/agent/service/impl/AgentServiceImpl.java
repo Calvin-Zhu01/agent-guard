@@ -78,6 +78,8 @@ public class AgentServiceImpl implements AgentService {
 
         // 使用 Hutool 忽略空值拷贝
         BeanUtil.copyProperties(dto, agentDO, CopyOptions.create().ignoreNullValue());
+        
+        agentDO.setUpdatedAt(java.time.LocalDateTime.now());
 
         agentMapper.updateById(agentDO);
         return BeanUtil.copyProperties(agentDO, AgentDTO.class);

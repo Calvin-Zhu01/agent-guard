@@ -19,7 +19,7 @@ const queryParams = ref({
   keyword: '',
   type: undefined as PolicyType | undefined,
   scope: undefined as PolicyScope | undefined,
-  sortBy: 'priority_desc' as 'priority_desc' | 'priority_asc' | 'created_desc' | 'created_asc'
+  sortBy: 'priority_desc' as 'priority_desc' | 'priority_asc' | 'updated_desc' | 'updated_asc'
 })
 
 // 对话框状态
@@ -62,6 +62,8 @@ const formData = ref({
   // 频率限制配置
   rateLimit: {
     mode: 'simple' as 'simple' | 'advanced',
+    urlPattern: '',
+    method: 'ALL',
     windowSeconds: 60,
     maxRequests: 100,
     customConditions: ''
@@ -234,6 +236,8 @@ function buildConditionsJson(): string {
         }
       } else {
         conditions = {
+          urlPattern: formData.value.rateLimit.urlPattern,
+          method: formData.value.rateLimit.method,
           windowSeconds: formData.value.rateLimit.windowSeconds,
           maxRequests: formData.value.rateLimit.maxRequests,
           action: 'RATE_LIMIT'
@@ -309,14 +313,14 @@ function parseConditionsJson(type: PolicyType, conditionsStr: string) {
         }
         break
       case 'RATE_LIMIT':
-        // 判断是否为高级模式（有 urlPattern、bodyConditions 等，排除 action）
-        const rateLimitStandardFields = ['windowSeconds', 'maxRequests', 'action']
-        const hasRateLimitAdvanced = Object.keys(conditions).some(k => !rateLimitStandardFields.includes(k))
-        if (hasRateLimitAdvanced) {
+        // 判断是否为高级模式（有 bodyConditions 或 headerConditions）
+        if (conditions.bodyConditions || conditions.headerConditions) {
           formData.value.rateLimit.mode = 'advanced'
           formData.value.rateLimit.customConditions = JSON.stringify(conditions, null, 2)
         } else {
           formData.value.rateLimit.mode = 'simple'
+          formData.value.rateLimit.urlPattern = conditions.urlPattern || ''
+          formData.value.rateLimit.method = conditions.method || 'ALL'
           formData.value.rateLimit.windowSeconds = conditions.windowSeconds || 60
           formData.value.rateLimit.maxRequests = conditions.maxRequests || 100
         }
@@ -435,17 +439,32 @@ function formatConditions(type: PolicyType, conditionsStr: string): string {
       }
       
       case 'RATE_LIMIT': {
-        // 基础限流配置
+        // URL 和方法
+        const method = conditions.method || 'ALL'
+        const url = conditions.urlPattern || '*'
+        parts.push(`${method} ${url}`)
+
+        // 限流配置
         if (conditions.windowSeconds && conditions.maxRequests) {
-          parts.push(`${conditions.windowSeconds}秒内最多${conditions.maxRequests}次`)
+          parts.push(`${conditions.windowSeconds}秒/${conditions.maxRequests}次`)
         }
-        // 限流维度
-        if (conditions.keyType) {
-          const keyTypeMap: Record<string, string> = {
-            agent: '按Agent', ip: '按IP', user: '按用户', global: '全局'
-          }
-          parts.push(keyTypeMap[conditions.keyType] || conditions.keyType)
+
+        // Header 条件
+        if (conditions.headerConditions?.length) {
+          const headerParts = conditions.headerConditions.map((h: any) =>
+            `${h.field} ${formatOperator(h.operator)} ${h.value}`
+          )
+          parts.push(`Header: ${headerParts.join(', ')}`)
         }
+
+        // Body 条件
+        if (conditions.bodyConditions?.length) {
+          const bodyParts = conditions.bodyConditions.map((b: any) =>
+            `${b.field} ${formatOperator(b.operator)} ${b.value}`
+          )
+          parts.push(`Body: ${bodyParts.join(', ')}`)
+        }
+
         return parts.length ? parts.join(' | ') : '-'
       }
       
@@ -504,6 +523,8 @@ function resetForm() {
     },
     rateLimit: {
       mode: 'simple',
+      urlPattern: '',
+      method: 'ALL',
       windowSeconds: 60,
       maxRequests: 100,
       customConditions: ''
@@ -684,12 +705,13 @@ async function handleDelete(policy: Policy) {
  * 切换策略启用状态
  */
 async function handleToggleEnabled(policy: Policy) {
-  const action = policy.enabled ? '停用' : '启用'
+  // 注意：el-switch 的 @change 事件触发时，policy.enabled 已经是切换后的新值
+  const action = policy.enabled ? '启用' : '停用'
   try {
     if (policy.enabled) {
-      await policyApi.disablePolicy(policy.id)
-    } else {
       await policyApi.enablePolicy(policy.id)
+    } else {
+      await policyApi.disablePolicy(policy.id)
     }
     ElMessage.success(`${action}成功`)
     fetchData()
@@ -798,8 +820,8 @@ onMounted(() => {
           >
             <el-option label="优先级降序" value="priority_desc" />
             <el-option label="优先级升序" value="priority_asc" />
-            <el-option label="创建时间降序" value="created_desc" />
-            <el-option label="创建时间升序" value="created_asc" />
+            <el-option label="修改时间降序" value="updated_desc" />
+            <el-option label="修改时间升序" value="updated_asc" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -846,7 +868,6 @@ onMounted(() => {
             />
           </template>
         </el-table-column>
-        <el-table-column prop="createdAt" label="创建时间" width="160" />
         <el-table-column prop="updatedAt" label="修改时间" width="160" />
         <el-table-column label="操作" width="120" fixed="right">
           <template #default="{ row }">
@@ -1240,24 +1261,41 @@ onMounted(() => {
 
           <!-- 简单模式 -->
           <template v-if="formData.rateLimit.mode === 'simple'">
+            <el-form-item label="URL 模式">
+              <el-input
+                v-model="formData.rateLimit.urlPattern"
+                placeholder="例如：/api/ai/.* 或 /api/llm/*"
+              />
+              <div class="field-hint">支持正则表达式匹配，留空表示匹配所有 URL</div>
+            </el-form-item>
+            <el-form-item label="HTTP 方法">
+              <el-select v-model="formData.rateLimit.method" style="width: 200px">
+                <el-option
+                  v-for="item in httpMethodOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+            </el-form-item>
             <el-form-item label="时间窗口" required>
-              <el-input-number 
-                v-model="formData.rateLimit.windowSeconds" 
-                :min="1" 
+              <el-input-number
+                v-model="formData.rateLimit.windowSeconds"
+                :min="1"
                 :max="86400"
               />
               <span class="unit-text">秒</span>
             </el-form-item>
             <el-form-item label="最大请求数" required>
-              <el-input-number 
-                v-model="formData.rateLimit.maxRequests" 
-                :min="1" 
+              <el-input-number
+                v-model="formData.rateLimit.maxRequests"
+                :min="1"
                 :max="100000"
               />
               <span class="unit-text">次</span>
             </el-form-item>
             <el-alert type="info" :closable="false" show-icon>
-              在 {{ formData.rateLimit.windowSeconds }} 秒内，最多允许 {{ formData.rateLimit.maxRequests }} 次请求，超出后将被拒绝
+              匹配 {{ formData.rateLimit.method === 'ALL' ? '所有方法' : formData.rateLimit.method }} {{ formData.rateLimit.urlPattern || '所有URL' }} 的请求，在 {{ formData.rateLimit.windowSeconds }} 秒内最多允许 {{ formData.rateLimit.maxRequests }} 次
             </el-alert>
           </template>
 
@@ -1270,10 +1308,13 @@ onMounted(() => {
                 :rows="8"
                 placeholder='示例：
 {
+  "urlPattern": "/api/ai/.*",
+  "method": "POST",
   "windowSeconds": 60,
   "maxRequests": 10,
-  "urlPattern": "/api/ai/.*",
-  "keyExtractor": "header:X-Agent-Id"
+  "headerConditions": [
+    { "field": "X-Agent-Id", "operator": "eq", "value": "agent-001" }
+  ]
 }'
               />
             </el-form-item>
@@ -1282,25 +1323,43 @@ onMounted(() => {
                 <div class="help-content">
                   <p><strong>支持的配置字段：</strong></p>
                   <ul>
+                    <li><code>urlPattern</code> - URL 正则匹配</li>
+                    <li><code>method</code> - HTTP 方法（GET/POST/PUT/DELETE/PATCH）</li>
                     <li><code>windowSeconds</code> - 时间窗口（秒）</li>
                     <li><code>maxRequests</code> - 最大请求数</li>
-                    <li><code>urlPattern</code> - 仅对匹配的 URL 限流</li>
-                    <li><code>method</code> - 仅对指定 HTTP 方法限流</li>
-                    <li><code>keyExtractor</code> - 限流维度（如按 Agent 限流）</li>
+                    <li><code>bodyConditions</code> - 请求体字段条件数组</li>
+                    <li><code>headerConditions</code> - 请求头条件数组</li>
                   </ul>
-                  <p><strong>keyExtractor 格式：</strong></p>
+
+                  <p><strong>bodyConditions / headerConditions 格式：</strong></p>
+                  <pre class="code-block">[{ "field": "字段名", "operator": "运算符", "value": "值" }]</pre>
+
+                  <p><strong>支持的运算符：</strong></p>
                   <ul>
-                    <li><code>header:X-Agent-Id</code> - 按请求头字段限流</li>
-                    <li><code>body:userId</code> - 按请求体字段限流</li>
-                    <li><code>ip</code> - 按 IP 地址限流</li>
+                    <li><code>eq</code> - 等于 | <code>ne</code> - 不等于</li>
+                    <li><code>gt</code> - 大于 | <code>gte</code> - 大于等于</li>
+                    <li><code>lt</code> - 小于 | <code>lte</code> - 小于等于</li>
+                    <li><code>contains</code> - 包含 | <code>matches</code> - 正则匹配</li>
+                    <li><code>in</code> - 在列表中 | <code>notIn</code> - 不在列表中</li>
                   </ul>
-                  <p><strong>示例：</strong>每个 Agent 每分钟最多调用 AI 接口 10 次</p>
+
+                  <p><strong>示例：</strong>特定 Agent 每分钟最多调用 AI 接口 10 次</p>
                   <pre class="code-block">{
+  "urlPattern": "/api/ai/.*",
+  "method": "POST",
   "windowSeconds": 60,
   "maxRequests": 10,
-  "urlPattern": "/api/ai/.*",
-  "keyExtractor": "header:X-Agent-Id"
+  "headerConditions": [
+    { "field": "X-Agent-Id", "operator": "eq", "value": "agent-001" }
+  ]
 }</pre>
+                  <p class="example-explain">
+                    当请求同时满足以下条件时触发限流：<br/>
+                    1. URL 匹配 <code>/api/ai/</code> 开头的路径<br/>
+                    2. HTTP 方法为 POST<br/>
+                    3. 请求头 X-Agent-Id 等于 agent-001<br/>
+                    该 Agent 在 60 秒内最多允许 10 次请求
+                  </p>
                 </div>
               </el-collapse-item>
             </el-collapse>

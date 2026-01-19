@@ -88,6 +88,9 @@ public class BudgetServiceImpl implements BudgetService {
 
         // 使用 Hutool 忽略空值拷贝
         BeanUtil.copyProperties(dto, budgetDO, CopyOptions.create().ignoreNullValue());
+        
+        budgetDO.setUpdatedAt(java.time.LocalDateTime.now());
+        
         budgetMapper.updateById(budgetDO);
 
         return toDTO(budgetDO);

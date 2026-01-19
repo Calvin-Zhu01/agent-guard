@@ -54,6 +54,5 @@ public class ApprovalRequestDO {
     private LocalDateTime expiresAt;
 
     /** 创建时间 */
-    @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 }

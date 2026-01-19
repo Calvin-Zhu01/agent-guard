@@ -54,7 +54,7 @@ export interface PolicyUpdateDTO {
 }
 
 /** 排序方式 */
-export type PolicySortBy = 'priority_desc' | 'priority_asc' | 'created_desc' | 'created_asc'
+export type PolicySortBy = 'priority_desc' | 'priority_asc' | 'updated_desc' | 'updated_asc'
 
 /** 策略列表查询参数 */
 export interface PolicyListParams {
