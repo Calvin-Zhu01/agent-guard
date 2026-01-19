@@ -94,27 +94,6 @@ See [Development Guide](./docs/development.md) for detailed instructions.
 - [SDK Documentation](./docs/sdk.md)
 - [Deployment Guide](./docs/deployment.md)
 
-## 💼 Business Model
-
-### Self-hosted (Open Source)
-- **Free forever**, MIT License
-- All core features
-- Community support
-- Self-managed deployment
-
-### Cloud (Coming Soon)
-| Plan | Price | Features |
-|------|-------|----------|
-| Free | $0/mo | Basic features |
-| Pro | $29/mo | Advanced analytics, priority support |
-| Team | $99/mo | Team collaboration, SSO |
-
-### Enterprise
-- Private deployment support
-- SLA guarantee
-- Dedicated support
-- Custom development
-
 ## 🤝 Contributing
 
 We welcome contributions! Please see our [Contributing Guide](./CONTRIBUTING.md).
@@ -134,5 +113,4 @@ If you find this project useful, please give it a star! ⭐
 
 ## 📬 Contact
 
-- GitHub Issues: [Report a bug](https://github.com/your-org/agent-guard/issues)
-- Discussions: [Ask questions](https://github.com/your-org/agent-guard/discussions)
+- GitHub Issues: [Report a bug](https://github.com/Calvin-Zhu01/agent-guard/issues)
