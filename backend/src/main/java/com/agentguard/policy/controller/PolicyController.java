@@ -6,6 +6,7 @@ import com.agentguard.common.response.Result;
 import com.agentguard.policy.dto.PolicyCreateDTO;
 import com.agentguard.policy.dto.PolicyDTO;
 import com.agentguard.policy.dto.PolicyUpdateDTO;
+import com.agentguard.policy.engine.PolicyEngine;
 import com.agentguard.policy.enums.PolicyScope;
 import com.agentguard.policy.enums.PolicyType;
 import com.agentguard.policy.service.PolicyService;
@@ -33,6 +34,7 @@ public class PolicyController {
 
     private final PolicyService policyService;
     private final AgentPolicyBindingService policyBindingService;
+    private final PolicyEngine policyEngine;
 
     @Operation(summary = "创建策略")
     @PostMapping
@@ -96,5 +98,12 @@ public class PolicyController {
     @GetMapping("/{policyId}/agents")
     public Result<List<AgentDTO>> getPolicyAgents(@PathVariable String policyId) {
         return Result.success(policyBindingService.getPolicyAgents(policyId));
+    }
+
+    @Operation(summary = "手动刷新策略缓存", description = "手动触发策略缓存刷新，通常在策略变更后自动刷新，此接口用于调试或异常情况")
+    @PostMapping("/refresh")
+    public Result<Void> refreshPolicies() {
+        policyEngine.refreshPolicies();
+        return Result.success();
     }
 }

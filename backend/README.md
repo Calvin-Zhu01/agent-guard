@@ -10,7 +10,6 @@ AI Agent 治理与监控平台后端服务
 - MyBatis-Plus 3.5+
 - MySQL 8.0+
 - Redis 7.0+
-- Drools 9.0+
 
 ## 快速开始
 

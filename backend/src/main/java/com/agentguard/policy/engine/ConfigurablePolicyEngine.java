@@ -50,8 +50,11 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
     private final PolicyService policyService;
     private final RateLimiterService rateLimiterService;
 
-    /** 缓存的策略列表（按优先级降序排列） */
-    private final CopyOnWriteArrayList<PolicyDTO> cachedPolicies = new CopyOnWriteArrayList<>();
+    /** 缓存的全局策略列表（按优先级降序排列） - 使用 volatile 保证可见性 */
+    private volatile List<PolicyDTO> globalPolicies = new ArrayList<>();
+    
+    /** 缓存的Agent级别策略列表（按agentId分组，每组按优先级降序排列） - 使用 volatile 保证可见性 */
+    private volatile Map<String, List<PolicyDTO>> agentPoliciesMap = new java.util.HashMap<>();
 
     @PostConstruct
     public void init() {
@@ -105,33 +108,26 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
      * 
      * 排序规则：
      * 1. Agent级别策略（scope=AGENT且agentId匹配）优先
-     * 2. 同级别内按priority降序排列
+     * 2. 然后是全局策略（scope=GLOBAL）
+     * 3. 同级别内已按priority降序排列
      *
      * @param agentId Agent ID
      * @return 排序后的策略列表
      */
     private List<PolicyDTO> getSortedPoliciesForAgent(String agentId) {
-        List<PolicyDTO> agentPolicies = new ArrayList<>();
-        List<PolicyDTO> globalPolicies = new ArrayList<>();
-
-        for (PolicyDTO policy : cachedPolicies) {
-            PolicyScope scope = policy.getScope();
-            
-            // 如果scope为null，视为全局策略（兼容旧数据）
-            if (ObjectUtil.isNull(scope) || scope == PolicyScope.GLOBAL) {
-                globalPolicies.add(policy);
-            } else if (scope == PolicyScope.AGENT) {
-                // Agent级别策略需要匹配agentId
-                if (StrUtil.isNotBlank(agentId) && agentId.equals(policy.getAgentId())) {
-                    agentPolicies.add(policy);
-                }
+        List<PolicyDTO> result = new ArrayList<>();
+        
+        // 1. 添加Agent级别策略（如果存在）
+        if (StrUtil.isNotBlank(agentId)) {
+            List<PolicyDTO> agentSpecificPolicies = agentPoliciesMap.get(agentId);
+            if (CollUtil.isNotEmpty(agentSpecificPolicies)) {
+                result.addAll(agentSpecificPolicies);
             }
         }
-
-        // Agent级别策略优先，然后是全局策略
-        List<PolicyDTO> result = new ArrayList<>();
-        result.addAll(agentPolicies);
+        
+        // 2. 添加全局策略
         result.addAll(globalPolicies);
+        
         return result;
     }
 
@@ -139,11 +135,43 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
     public void refreshPolicies() {
         try {
             List<PolicyDTO> policies = policyService.getEnabledPolicies();
+            
             // 按优先级降序排序
             policies.sort(Comparator.comparingInt(PolicyDTO::getPriority).reversed());
-            cachedPolicies.clear();
-            cachedPolicies.addAll(policies);
-            log.info("Refreshed {} enabled policies", policies.size());
+            
+            // 分类存储：全局策略 vs Agent级别策略
+            List<PolicyDTO> newGlobalPolicies = new ArrayList<>();
+            Map<String, List<PolicyDTO>> newAgentPoliciesMap = new java.util.HashMap<>();
+            
+            for (PolicyDTO policy : policies) {
+                PolicyScope scope = policy.getScope();
+                
+                if (scope == PolicyScope.GLOBAL) {
+                    newGlobalPolicies.add(policy);
+                } else if (scope == PolicyScope.AGENT) {
+                    String agentId = policy.getAgentId();
+                    if (StrUtil.isNotBlank(agentId)) {
+                        newAgentPoliciesMap
+                            .computeIfAbsent(agentId, k -> new ArrayList<>())
+                            .add(policy);
+                    } else {
+                        log.warn("Agent-scoped policy {} has no agentId, treating as global", policy.getId());
+                        newGlobalPolicies.add(policy);
+                    }
+                } else {
+                    // scope为null的情况，记录警告并视为全局策略
+                    log.warn("Policy {} has null scope, treating as global", policy.getId());
+                    newGlobalPolicies.add(policy);
+                }
+            }
+            
+            // 原子性替换缓存（volatile 保证可见性）
+            this.globalPolicies = newGlobalPolicies;
+            this.agentPoliciesMap = newAgentPoliciesMap;
+            
+            log.info("Refreshed {} enabled policies: {} global, {} agent-specific", 
+                    policies.size(), newGlobalPolicies.size(), 
+                    newAgentPoliciesMap.values().stream().mapToInt(List::size).sum());
         } catch (Exception e) {
             log.error("Failed to refresh policies", e);
         }

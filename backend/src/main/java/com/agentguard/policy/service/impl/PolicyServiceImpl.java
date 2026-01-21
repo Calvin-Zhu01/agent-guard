@@ -10,6 +10,7 @@ import com.agentguard.common.exception.ErrorCode;
 import com.agentguard.policy.dto.PolicyCreateDTO;
 import com.agentguard.policy.dto.PolicyDTO;
 import com.agentguard.policy.dto.PolicyUpdateDTO;
+import com.agentguard.policy.engine.PolicyEngine;
 import com.agentguard.policy.entity.PolicyDO;
 import com.agentguard.policy.enums.PolicyScope;
 import com.agentguard.policy.enums.PolicyType;
@@ -36,6 +37,7 @@ import java.util.stream.Collectors;
 public class PolicyServiceImpl implements PolicyService {
 
     private final PolicyMapper policyMapper;
+    private final PolicyEngine policyEngine;
 
     @Override
     @Transactional
@@ -49,6 +51,10 @@ public class PolicyServiceImpl implements PolicyService {
         PolicyDO policyDO = BeanUtil.copyProperties(dto, PolicyDO.class);
         policyDO.setEnabled(true);
         policyMapper.insert(policyDO);
+        
+        // 刷新策略缓存
+        policyEngine.refreshPolicies();
+        
         return toDTO(policyDO);
     }
 
@@ -116,6 +122,10 @@ public class PolicyServiceImpl implements PolicyService {
         policyDO.setUpdatedAt(LocalDateTime.now());
 
         policyMapper.updateById(policyDO);
+        
+        // 刷新策略缓存
+        policyEngine.refreshPolicies();
+        
         return toDTO(policyDO);
     }
 
@@ -125,6 +135,9 @@ public class PolicyServiceImpl implements PolicyService {
         if (policyMapper.deleteById(id) == 0) {
             throw new BusinessException(ErrorCode.POLICY_NOT_FOUND);
         }
+        
+        // 刷新策略缓存
+        policyEngine.refreshPolicies();
     }
 
     @Override
@@ -137,6 +150,9 @@ public class PolicyServiceImpl implements PolicyService {
         policyDO.setEnabled(true);
         policyDO.setUpdatedAt(LocalDateTime.now());
         policyMapper.updateById(policyDO);
+        
+        // 刷新策略缓存
+        policyEngine.refreshPolicies();
     }
 
     @Override
@@ -149,6 +165,9 @@ public class PolicyServiceImpl implements PolicyService {
         policyDO.setEnabled(false);
         policyDO.setUpdatedAt(LocalDateTime.now());
         policyMapper.updateById(policyDO);
+        
+        // 刷新策略缓存
+        policyEngine.refreshPolicies();
     }
 
     @Override

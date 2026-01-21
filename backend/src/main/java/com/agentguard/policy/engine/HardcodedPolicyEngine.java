@@ -16,7 +16,10 @@ import java.util.Map;
  * 此实现已被 ConfigurablePolicyEngine 替代，保留用于向后兼容
  *
  * @author zhuhx
+ * @deprecated 自 v1.0 起废弃，请使用 {@link ConfigurablePolicyEngine} 代替。
+ *             此类将在 v2.0 中移除。
  */
+@Deprecated(since = "1.0", forRemoval = true)
 @Component("hardcodedPolicyEngine")
 public class HardcodedPolicyEngine implements PolicyEngine {
 

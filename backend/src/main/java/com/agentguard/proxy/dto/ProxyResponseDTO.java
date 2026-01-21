@@ -23,6 +23,10 @@ public class ProxyResponseDTO {
     @Schema(description = "响应状态：SUCCESS/FAILED/BLOCKED/PENDING_APPROVAL", example = "SUCCESS")
     private ResponseStatus status;
 
+    /** HTTP 状态码 */
+    @Schema(description = "HTTP 状态码")
+    private Integer statusCode;
+
     /** 消息 */
     @Schema(description = "响应消息", example = "请求成功")
     private String message;

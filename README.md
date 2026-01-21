@@ -68,8 +68,8 @@ AgentGuard uses a **transparent HTTP proxy** approach for maximum simplicity and
 ┌─────────────────────────────────────────────────────────────┐
 │                  Backend (Spring Boot)                      │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │ HTTP Proxy  │  │ Rule Engine │  │  Approval Service   │  │
-│  │  (URL-based)│  │  (Drools)   │  │                     │  │
+│  │ HTTP Proxy  │  │Policy Engine│  │  Approval Service   │  │
+│  │  (URL-based)│  │(JSON Config)│  │                     │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
                               │

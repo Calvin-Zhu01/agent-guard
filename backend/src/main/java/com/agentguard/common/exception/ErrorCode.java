@@ -30,6 +30,12 @@ public enum ErrorCode {
     AGENT_NAME_DUPLICATE(2002, "Agent名称已存在"),
     AGENT_API_KEY_INVALID(2003, "Agent API Key无效"),
 
+    // 代理请求转发模块 21xx
+    INVALID_TARGET_URL(2101, "无效的目标URL"),
+    INTERNAL_ADDRESS_FORBIDDEN(2102, "禁止访问内网地址"),
+    UNSUPPORTED_HTTP_METHOD(2103, "不支持的HTTP方法"),
+    TARGET_SERVICE_UNREACHABLE(2104, "目标服务不可达"),
+
     // 策略模块 3xxx
     POLICY_NOT_FOUND(3001, "策略不存在"),
     POLICY_NAME_DUPLICATE(3002, "策略名称已存在"),

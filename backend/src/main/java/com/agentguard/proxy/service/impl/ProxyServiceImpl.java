@@ -3,6 +3,7 @@ package com.agentguard.proxy.service.impl;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.map.MapUtil;
 import cn.hutool.core.util.ObjectUtil;
+import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.agentguard.agent.dto.AgentDTO;
 import com.agentguard.agent.service.AgentService;
@@ -23,9 +24,21 @@ import com.agentguard.proxy.dto.ProxyResponseDTO;
 import com.agentguard.proxy.service.ProxyService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestTemplate;
 
+import java.net.InetAddress;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -38,6 +51,7 @@ import java.util.Optional;
 @Service
 public class ProxyServiceImpl implements ProxyService {
 
+    private final RestTemplate restTemplate;
     private final AgentService agentService;
     private final AgentLogService agentLogService;
     private final PolicyEngine policyEngine;
@@ -45,11 +59,13 @@ public class ProxyServiceImpl implements ProxyService {
     private final ApprovalService approvalService;
 
     public ProxyServiceImpl(
+            RestTemplate restTemplate,
             AgentService agentService,
             AgentLogService agentLogService,
             PolicyEngine policyEngine,
             ContentMaskerService contentMaskerService,
             @Lazy ApprovalService approvalService) {
+        this.restTemplate = restTemplate;
         this.agentService = agentService;
         this.agentLogService = agentLogService;
         this.policyEngine = policyEngine;
@@ -89,19 +105,25 @@ public class ProxyServiceImpl implements ProxyService {
                 responseStatus = ResponseStatus.BLOCKED;
             }
         } else {
-            // 请求允许通过，返回 mock 响应（MVP 阶段）
-            response = createMockResponse(request);
-            responseStatus = ResponseStatus.SUCCESS;
-            
-            // 检查是否需要脱敏处理
-            if (policyResult.isRequireMask() && ObjectUtil.isNotNull(policyResult.getMaskConfig())) {
-                response = applyMasking(response, policyResult);
+            // 请求允许通过，转发到目标服务
+            try {
+                response = forwardRequest(request);
+                responseStatus = ResponseStatus.SUCCESS;
+                
+                // 检查是否需要脱敏处理
+                if (policyResult.isRequireMask() && ObjectUtil.isNotNull(policyResult.getMaskConfig())) {
+                    response = applyMasking(response, policyResult);
+                }
+            } catch (Exception e) {
+                response = handleForwardingError(e, request);
+                responseStatus = ResponseStatus.FAILED;
             }
         }
 
         // 4. 记录日志
         long responseTimeMs = System.currentTimeMillis() - startTime;
-        recordLog(agent.getId(), request, responseStatus, responseTimeMs, policyResult);
+        boolean success = (responseStatus == ResponseStatus.SUCCESS);
+        recordLog(agent.getId(), request, responseStatus, responseTimeMs, policyResult, success);
 
         return response;
     }
@@ -116,6 +138,132 @@ public class ProxyServiceImpl implements ProxyService {
     private AgentDTO validateApiKey(String apiKey) {
         return Optional.ofNullable(agentService.getByApiKey(apiKey))
                 .orElseThrow(() -> new BusinessException(ErrorCode.AGENT_API_KEY_INVALID));
+    }
+
+    /**
+     * 验证目标 URL
+     *
+     * @param url 目标URL
+     * @throws BusinessException 如果URL为空或格式错误
+     */
+    private void validateTargetUrl(String url) {
+        if (StrUtil.isBlank(url)) {
+            throw new BusinessException(ErrorCode.INVALID_TARGET_URL);
+        }
+
+        try {
+            URI uri = new URI(url);
+            String host = uri.getHost();
+            
+            // 拒绝内网地址
+            if (isInternalAddress(host)) {
+                throw new BusinessException(ErrorCode.INTERNAL_ADDRESS_FORBIDDEN);
+            }
+        } catch (URISyntaxException e) {
+            throw new BusinessException(ErrorCode.INVALID_TARGET_URL);
+        }
+    }
+
+    /**
+     * 检查是否为内网地址
+     *
+     * @param host 主机名或IP地址
+     * @return 如果是内网地址返回true，否则返回false
+     */
+    private boolean isInternalAddress(String host) {
+        if (StrUtil.isBlank(host)) {
+            return false;
+        }
+
+        // 检查 localhost
+        if ("localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host)) {
+            return true;
+        }
+
+        // 检查私有 IP 段
+        try {
+            InetAddress addr = InetAddress.getByName(host);
+            return addr.isSiteLocalAddress() || addr.isLoopbackAddress();
+        } catch (Exception e) {
+            log.warn("Failed to resolve host: {}", host);
+            return false;
+        }
+    }
+
+    /**
+     * 转发请求到目标服务
+     *
+     * @param request 代理请求
+     * @return 代理响应
+     * @throws BusinessException 如果URL验证失败
+     */
+    private ProxyResponseDTO forwardRequest(ProxyRequestDTO request) {
+        // URL 验证
+        validateTargetUrl(request.getTargetUrl());
+        
+        // 构建请求头
+        HttpHeaders headers = buildHeaders(request.getHeaders());
+        
+        // 构建请求体（将 Map<String, Object> 转换为 JSON 字符串）
+        String requestBody = null;
+        if (CollUtil.isNotEmpty(request.getBody())) {
+            requestBody = JSONUtil.toJsonStr(request.getBody());
+        }
+        
+        // 创建 HttpEntity
+        HttpEntity<String> entity = new HttpEntity<>(requestBody, headers);
+        
+        // 发起请求
+        ResponseEntity<String> response = restTemplate.exchange(
+            request.getTargetUrl(),
+            HttpMethod.valueOf(request.getMethod().toUpperCase()),
+            entity,
+            String.class
+        );
+        
+        // 构建响应
+        return buildSuccessResponse(response);
+    }
+
+    /**
+     * 构建请求头
+     *
+     * @param headerMap 请求头Map
+     * @return HttpHeaders对象
+     */
+    private HttpHeaders buildHeaders(Map<String, String> headerMap) {
+        HttpHeaders headers = new HttpHeaders();
+        if (CollUtil.isNotEmpty(headerMap)) {
+            headerMap.forEach(headers::add);
+        }
+        return headers;
+    }
+
+    /**
+     * 构建成功响应
+     *
+     * @param response RestTemplate响应
+     * @return 代理响应DTO
+     */
+    private ProxyResponseDTO buildSuccessResponse(ResponseEntity<String> response) {
+        // 解析响应体为对象
+        Object responseData = null;
+        if (StrUtil.isNotBlank(response.getBody())) {
+            try {
+                // 尝试解析为 JSON 对象
+                responseData = JSONUtil.parse(response.getBody());
+            } catch (Exception e) {
+                // 如果不是 JSON，直接使用字符串
+                responseData = response.getBody();
+            }
+        }
+        
+        return ProxyResponseDTO.builder()
+                .status(com.agentguard.log.enums.ResponseStatus.SUCCESS)
+                .statusCode(response.getStatusCode().value())
+                .message("Request forwarded successfully")
+                .response(responseData)
+                .build();
     }
 
     /**
@@ -205,10 +353,11 @@ public class ProxyServiceImpl implements ProxyService {
      * @param responseStatus 响应状态
      * @param responseTimeMs 响应时间（毫秒）
      * @param policyResult 策略评估结果
+     * @param success 是否成功
      */
     private void recordLog(String agentId, ProxyRequestDTO request,
                            ResponseStatus responseStatus, long responseTimeMs,
-                           PolicyResult policyResult) {
+                           PolicyResult policyResult, boolean success) {
         try {
             AgentLogCreateDTO logDto = new AgentLogCreateDTO();
             logDto.setAgentId(agentId);
@@ -238,6 +387,15 @@ public class ProxyServiceImpl implements ProxyService {
                     .put("method", request.getMethod())
                     .put("url", request.getTargetUrl())
                     .build();
+            
+            // 添加脱敏后的请求头
+            if (CollUtil.isNotEmpty(request.getHeaders())) {
+                String maskedHeaders = maskSensitiveHeaders(request.getHeaders());
+                if (StrUtil.isNotBlank(maskedHeaders)) {
+                    summary.put("headers", JSONUtil.parse(maskedHeaders));
+                }
+            }
+            
             if (CollUtil.isNotEmpty(request.getBody())) {
                 summary.put("bodyKeys", request.getBody().keySet());
             }
@@ -255,5 +413,109 @@ public class ProxyServiceImpl implements ProxyService {
             log.warn("Failed to create request summary", e);
             return "{}";
         }
+    }
+
+    /**
+     * 处理转发错误
+     *
+     * @param e 异常对象
+     * @param request 代理请求
+     * @return 错误响应DTO
+     */
+    private ProxyResponseDTO handleForwardingError(Exception e, ProxyRequestDTO request) {
+        log.error("Request forwarding failed for URL {}: {}", request.getTargetUrl(), e.getMessage());
+
+        ProxyResponseDTO.ProxyResponseDTOBuilder responseBuilder = ProxyResponseDTO.builder()
+                .status(ResponseStatus.FAILED);
+
+        if (e instanceof ResourceAccessException) {
+            // 网络错误或超时
+            responseBuilder
+                    .statusCode(504)
+                    .message("Target service unreachable or timeout");
+        } else if (e instanceof HttpClientErrorException) {
+            // 4xx 错误
+            HttpClientErrorException clientError = (HttpClientErrorException) e;
+            Object responseData = null;
+            String responseBody = clientError.getResponseBodyAsString();
+            
+            // 尝试解析响应体为 JSON
+            if (StrUtil.isNotBlank(responseBody)) {
+                try {
+                    responseData = JSONUtil.parse(responseBody);
+                } catch (Exception parseEx) {
+                    // 如果不是 JSON，直接使用字符串
+                    responseData = responseBody;
+                }
+            }
+            
+            responseBuilder
+                    .statusCode(clientError.getStatusCode().value())
+                    .message("Target service returned client error")
+                    .response(responseData);
+        } else if (e instanceof HttpServerErrorException) {
+            // 5xx 错误
+            HttpServerErrorException serverError = (HttpServerErrorException) e;
+            Object responseData = null;
+            String responseBody = serverError.getResponseBodyAsString();
+            
+            // 尝试解析响应体为 JSON
+            if (StrUtil.isNotBlank(responseBody)) {
+                try {
+                    responseData = JSONUtil.parse(responseBody);
+                } catch (Exception parseEx) {
+                    // 如果不是 JSON，直接使用字符串
+                    responseData = responseBody;
+                }
+            }
+            
+            responseBuilder
+                    .statusCode(serverError.getStatusCode().value())
+                    .message("Target service returned server error")
+                    .response(responseData);
+        } else if (e instanceof BusinessException) {
+            // 业务异常（如 URL 验证失败）
+            BusinessException bizError = (BusinessException) e;
+            responseBuilder
+                    .statusCode(400)
+                    .message(bizError.getMessage());
+        } else {
+            // 其他未知异常
+            responseBuilder
+                    .statusCode(500)
+                    .message("Internal proxy error");
+        }
+
+        return responseBuilder.build();
+    }
+
+    /**
+     * 脱敏敏感请求头
+     *
+     * @param headers 请求头Map
+     * @return 脱敏后的JSON字符串
+     */
+    private String maskSensitiveHeaders(Map<String, String> headers) {
+        if (CollUtil.isEmpty(headers)) {
+            return null;
+        }
+
+        // 创建敏感 header 名称列表
+        List<String> sensitiveKeys = CollUtil.newArrayList(
+                "authorization", "api-key", "x-api-key", "token"
+        );
+
+        // 创建副本并脱敏
+        Map<String, String> masked = MapUtil.newHashMap(headers.size());
+        headers.forEach((key, value) -> {
+            if (sensitiveKeys.contains(key.toLowerCase())) {
+                masked.put(key, "***MASKED***");
+            } else {
+                masked.put(key, value);
+            }
+        });
+
+        // 转换为 JSON 字符串
+        return JSONUtil.toJsonStr(masked);
     }
 }
