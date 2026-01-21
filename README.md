@@ -20,10 +20,10 @@
 
 - **📊 Unified Agent View** - Register and manage all AI Agents in one platform
 - **📝 Behavior Logging** - Record complete context of every API call and LLM request
-- **🔒 Policy Engine** - Define access control, rate limits, and approval workflows
+- **🔒 Policy Engine** - Define access control, rate limits, and approval workflows based on URL patterns
 - **💰 Cost Analytics** - Track token usage and costs across all Agents
 - **🚨 Smart Alerts** - Get notified on anomalies or policy violations
-- **🔌 Easy Integration** - Java/Python SDK or HTTP Proxy mode
+- **🔌 Easy Integration** - Transparent HTTP proxy mode with optional metadata support
 
 ## 🎯 Problems We Solve
 
@@ -55,6 +55,8 @@ See [Development Guide](./docs/development.md) for detailed instructions.
 
 ## 🏗️ Architecture
 
+AgentGuard uses a **transparent HTTP proxy** approach for maximum simplicity and flexibility:
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    Frontend (Vue 3)                         │
@@ -66,7 +68,8 @@ See [Development Guide](./docs/development.md) for detailed instructions.
 ┌─────────────────────────────────────────────────────────────┐
 │                  Backend (Spring Boot)                      │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │ Agent Proxy │  │ Rule Engine │  │  Approval Service   │  │
+│  │ HTTP Proxy  │  │ Rule Engine │  │  Approval Service   │  │
+│  │  (URL-based)│  │  (Drools)   │  │                     │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -77,6 +80,41 @@ See [Development Guide](./docs/development.md) for detailed instructions.
 │  └─────────────┘  └─────────────┘                          │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+### How It Works
+
+1. **Agent sends HTTP request** to AgentGuard proxy endpoint
+2. **Policy engine evaluates** based on URL pattern, method, headers
+3. **Approval workflow** triggers if needed (high-risk operations)
+4. **Request forwarded** to target API with full logging
+5. **Response returned** to Agent with cost tracking
+
+### Integration Example
+
+```bash
+# Instead of calling API directly:
+curl https://api.example.com/v1/users
+
+# Route through AgentGuard:
+curl https://agentguard.example.com/api/v1/proxy \
+  -H "X-Agent-ID: agent-123" \
+  -H "X-Target-URL: https://api.example.com/v1/users" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "method": "GET",
+    "metadata": {
+      "operation": "list_users",
+      "reason": "Daily sync"
+    }
+  }'
+```
+
+**Benefits:**
+- ✅ No code changes to existing Agents
+- ✅ Works with any HTTP API
+- ✅ Simple URL-based policy rules
+- ✅ Optional metadata for business context
+- ✅ Full request/response logging
 
 ## 🛠️ Tech Stack
 

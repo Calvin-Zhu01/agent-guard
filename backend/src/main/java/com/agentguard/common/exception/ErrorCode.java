@@ -60,14 +60,7 @@ public enum ErrorCode {
     POLICY_BINDING_NOT_FOUND(8001, "策略绑定不存在"),
     POLICY_BINDING_ALREADY_EXISTS(8002, "策略绑定已存在"),
     POLICY_BINDING_AGENT_DISABLED(8003, "Agent已禁用，无法绑定策略"),
-    POLICY_BINDING_POLICY_DISABLED(8004, "策略已禁用，无法绑定"),
-
-    // Tool Schema 模块 9xxx
-    TOOL_SCHEMA_PARSE_ERROR(9001, "Tool Schema 请求解析失败"),
-    TOOL_SCHEMA_ACTION_INVALID(9002, "不支持的 Tool Schema 操作类型"),
-    TOOL_SCHEMA_RESOURCE_INVALID(9003, "Tool Schema 资源格式无效"),
-    TOOL_SCHEMA_PARAMS_INVALID(9004, "Tool Schema 参数格式无效"),
-    TOOL_SCHEMA_CONVERSION_ERROR(9005, "Tool Schema 转换为代理请求失败");
+    POLICY_BINDING_POLICY_DISABLED(8004, "策略已禁用，无法绑定");
 
     private final int code;
     private final String message;

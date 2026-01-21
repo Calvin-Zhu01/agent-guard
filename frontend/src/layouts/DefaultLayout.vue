@@ -35,6 +35,18 @@ const menuItems = [
   { path: '/settings', title: '系统设置', icon: 'Setting' }
 ]
 
+// 根据用户角色过滤菜单项
+const visibleMenuItems = computed(() => {
+  return menuItems.filter(item => {
+    // 如果菜单项没有角色限制，所有人可见
+    if (!item.roles || item.roles.length === 0) {
+      return true
+    }
+    // 如果有角色限制，检查用户是否是管理员
+    return item.roles.includes('ADMIN') && userStore.isAdmin
+  })
+})
+
 /**
  * 获取失败告警数量
  */
@@ -144,7 +156,7 @@ onUnmounted(() => {
         text-color="#fff"
         active-text-color="#409eff"
       >
-        <el-menu-item v-for="item in menuItems" :key="item.path" :index="item.path">
+        <el-menu-item v-for="item in visibleMenuItems" :key="item.path" :index="item.path">
           <el-badge 
             v-if="item.badge && alertBadgeCount > 0" 
             :value="alertBadgeCount" 

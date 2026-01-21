@@ -42,4 +42,7 @@ public class PolicyUpdateDTO {
 
     @Schema(description = "关联的Agent ID（仅当scope为AGENT时有效）")
     private String agentId;
+
+    @Schema(description = "策略标签（JSON数组）", example = "[\"财务\", \"支付\", \"高风险\"]")
+    private String tags;
 }

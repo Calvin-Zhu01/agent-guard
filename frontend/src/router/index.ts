@@ -5,6 +5,7 @@
  */
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 
 // 白名单路由（不需要登录）
@@ -128,6 +129,18 @@ router.beforeEach(async (to, _from, next) => {
         path: '/login',
         query: { redirect: to.fullPath }
       })
+      return
+    }
+  }
+  
+  // 检查路由权限
+  const roles = to.meta.roles as string[] | undefined
+  if (roles && roles.length > 0) {
+    // 如果路由需要特定角色
+    if (roles.includes('ADMIN') && !userStore.isAdmin) {
+      // 用户不是管理员，无权访问
+      ElMessage.error('无权访问该页面')
+      next('/dashboard')
       return
     }
   }

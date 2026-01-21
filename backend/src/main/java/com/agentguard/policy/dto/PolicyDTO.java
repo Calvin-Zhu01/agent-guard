@@ -48,6 +48,9 @@ public class PolicyDTO {
     @Schema(description = "是否启用")
     private Boolean enabled;
 
+    @Schema(description = "策略标签（JSON数组）", example = "[\"财务\", \"支付\", \"高风险\"]")
+    private String tags;
+
     @Schema(description = "创建时间")
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createdAt;

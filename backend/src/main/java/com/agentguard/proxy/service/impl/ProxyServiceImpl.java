@@ -241,6 +241,10 @@ public class ProxyServiceImpl implements ProxyService {
             if (CollUtil.isNotEmpty(request.getBody())) {
                 summary.put("bodyKeys", request.getBody().keySet());
             }
+            // 记录业务元数据
+            if (CollUtil.isNotEmpty(request.getMetadata())) {
+                summary.put("metadata", request.getMetadata());
+            }
             // 添加策略信息
             if (policyResult != null && policyResult.getPolicyId() != null) {
                 summary.put("policyId", policyResult.getPolicyId());

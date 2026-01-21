@@ -42,4 +42,9 @@ public class ProxyRequestDTO {
     /** 请求体 */
     @Schema(description = "请求体")
     private Map<String, Object> body;
+
+    /** 业务元数据（可选） */
+    @Schema(description = "业务元数据（可选），用于日志记录和策略评估。可包含 actionType、category、description、riskLevel 等字段", 
+            example = "{\"actionType\": \"transfer_funds\", \"category\": \"finance\", \"riskLevel\": \"high\"}")
+    private Map<String, Object> metadata;
 }

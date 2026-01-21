@@ -48,6 +48,9 @@ public class PolicyDO {
     /** 是否启用 */
     private Boolean enabled;
 
+    /** 策略标签（JSON数组，如 ["财务", "支付", "高风险"]） */
+    private String tags;
+
     /** 创建时间 */
     private LocalDateTime createdAt;
 
