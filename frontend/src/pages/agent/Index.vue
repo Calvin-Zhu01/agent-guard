@@ -210,7 +210,6 @@ async function handleUnbindPolicy(policyId: string) {
 
 const policyTypeMap: Record<string, { label: string; type: 'primary' | 'success' | 'warning' | 'info' | 'danger' }> = {
   ACCESS_CONTROL: { label: '访问控制', type: 'primary' },
-  CONTENT_PROTECTION: { label: '内容保护', type: 'warning' },
   APPROVAL: { label: '审批', type: 'danger' },
   RATE_LIMIT: { label: '频率限制', type: 'info' }
 }

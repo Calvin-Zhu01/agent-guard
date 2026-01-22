@@ -35,6 +35,15 @@ public class AgentLogCreateDTO {
     @Schema(description = "请求摘要（JSON格式）")
     private String requestSummary;
 
+    @Schema(description = "请求头（JSON格式）")
+    private String requestHeaders;
+
+    @Schema(description = "完整请求体（JSON格式）")
+    private String requestBody;
+
+    @Schema(description = "完整响应体（JSON格式）")
+    private String responseBody;
+
     @Schema(description = "响应状态", requiredMode = Schema.RequiredMode.REQUIRED, example = "SUCCESS")
     @NotNull(message = "响应状态不能为空")
     private ResponseStatus responseStatus;
@@ -54,6 +63,6 @@ public class AgentLogCreateDTO {
     @Schema(description = "成本")
     private BigDecimal cost;
 
-    @Schema(description = "触发的策略ID")
-    private String policyId;
+    @Schema(description = "策略快照（触发策略时的策略信息）")
+    private PolicySnapshotDTO policySnapshot;
 }

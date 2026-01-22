@@ -13,12 +13,13 @@ import com.agentguard.approval.service.ApprovalService;
 import com.agentguard.common.exception.BusinessException;
 import com.agentguard.common.exception.ErrorCode;
 import com.agentguard.log.dto.AgentLogCreateDTO;
+import com.agentguard.log.dto.PolicySnapshotDTO;
 import com.agentguard.log.enums.RequestType;
 import com.agentguard.log.enums.ResponseStatus;
 import com.agentguard.log.service.AgentLogService;
 import com.agentguard.policy.dto.PolicyResult;
 import com.agentguard.policy.engine.PolicyEngine;
-import com.agentguard.policy.service.ContentMaskerService;
+import com.agentguard.proxy.config.ProxyProperties;
 import com.agentguard.proxy.dto.ProxyRequestDTO;
 import com.agentguard.proxy.dto.ProxyResponseDTO;
 import com.agentguard.proxy.service.ProxyService;
@@ -55,22 +56,22 @@ public class ProxyServiceImpl implements ProxyService {
     private final AgentService agentService;
     private final AgentLogService agentLogService;
     private final PolicyEngine policyEngine;
-    private final ContentMaskerService contentMaskerService;
     private final ApprovalService approvalService;
+    private final ProxyProperties proxyProperties;
 
     public ProxyServiceImpl(
             RestTemplate restTemplate,
             AgentService agentService,
             AgentLogService agentLogService,
             PolicyEngine policyEngine,
-            ContentMaskerService contentMaskerService,
-            @Lazy ApprovalService approvalService) {
+            @Lazy ApprovalService approvalService,
+            ProxyProperties proxyProperties) {
         this.restTemplate = restTemplate;
         this.agentService = agentService;
         this.agentLogService = agentLogService;
         this.policyEngine = policyEngine;
-        this.contentMaskerService = contentMaskerService;
         this.approvalService = approvalService;
+        this.proxyProperties = proxyProperties;
     }
 
     @Override
@@ -109,11 +110,6 @@ public class ProxyServiceImpl implements ProxyService {
             try {
                 response = forwardRequest(request);
                 responseStatus = ResponseStatus.SUCCESS;
-                
-                // 检查是否需要脱敏处理
-                if (policyResult.isRequireMask() && ObjectUtil.isNotNull(policyResult.getMaskConfig())) {
-                    response = applyMasking(response, policyResult);
-                }
             } catch (Exception e) {
                 response = handleForwardingError(e, request);
                 responseStatus = ResponseStatus.FAILED;
@@ -123,7 +119,7 @@ public class ProxyServiceImpl implements ProxyService {
         // 4. 记录日志
         long responseTimeMs = System.currentTimeMillis() - startTime;
         boolean success = (responseStatus == ResponseStatus.SUCCESS);
-        recordLog(agent.getId(), request, responseStatus, responseTimeMs, policyResult, success);
+        recordLog(agent.getId(), request, response, responseStatus, responseTimeMs, policyResult, success);
 
         return response;
     }
@@ -154,9 +150,8 @@ public class ProxyServiceImpl implements ProxyService {
         try {
             URI uri = new URI(url);
             String host = uri.getHost();
-            
-            // 拒绝内网地址
-            if (isInternalAddress(host)) {
+            // 拒绝内网地址（除非配置允许）
+            if (!proxyProperties.isAllowInternalAddress() && isInternalAddress(host)) {
                 throw new BusinessException(ErrorCode.INTERNAL_ADDRESS_FORBIDDEN);
             }
         } catch (URISyntaxException e) {
@@ -312,50 +307,17 @@ public class ProxyServiceImpl implements ProxyService {
     }
 
     /**
-     * 对响应进行脱敏处理
-     *
-     * @param response 原始响应
-     * @param policyResult 策略结果（包含脱敏配置）
-     * @return 脱敏后的响应
-     */
-    @SuppressWarnings("unchecked")
-    private ProxyResponseDTO applyMasking(ProxyResponseDTO response, PolicyResult policyResult) {
-        try {
-            Object data = response.getResponse();
-            if (ObjectUtil.isNull(data)) {
-                return response;
-            }
-
-            // 调用 ContentMaskerService 进行脱敏
-            Object maskedData = contentMaskerService.maskContent(data, policyResult.getMaskConfig());
-            
-            // 创建新的响应对象
-            ProxyResponseDTO maskedResponse = new ProxyResponseDTO();
-            maskedResponse.setStatus(response.getStatus());
-            maskedResponse.setMessage(response.getMessage());
-            maskedResponse.setApprovalRequestId(response.getApprovalRequestId());
-            maskedResponse.setResponse(maskedData);
-
-            log.debug("Applied masking to response with policy {}", policyResult.getPolicyId());
-            return maskedResponse;
-        } catch (Exception e) {
-            log.error("Failed to apply masking to response: {}", e.getMessage());
-            // 脱敏失败，返回原始响应
-            return response;
-        }
-    }
-
-    /**
      * 记录请求日志
      *
      * @param agentId Agent ID
      * @param request 代理请求
+     * @param response 代理响应
      * @param responseStatus 响应状态
      * @param responseTimeMs 响应时间（毫秒）
      * @param policyResult 策略评估结果
      * @param success 是否成功
      */
-    private void recordLog(String agentId, ProxyRequestDTO request,
+    private void recordLog(String agentId, ProxyRequestDTO request, ProxyResponseDTO response,
                            ResponseStatus responseStatus, long responseTimeMs,
                            PolicyResult policyResult, boolean success) {
         try {
@@ -367,6 +329,34 @@ public class ProxyServiceImpl implements ProxyService {
             logDto.setRequestSummary(createRequestSummary(request, policyResult));
             logDto.setResponseStatus(responseStatus);
             logDto.setResponseTimeMs((int) responseTimeMs);
+
+            // 记录请求头
+            if (CollUtil.isNotEmpty(request.getHeaders())) {
+                logDto.setRequestHeaders(JSONUtil.toJsonStr(request.getHeaders()));
+            }
+
+            // 记录完整请求体
+            if (CollUtil.isNotEmpty(request.getBody())) {
+                logDto.setRequestBody(JSONUtil.toJsonStr(request.getBody()));
+            }
+
+            // 记录完整响应体
+            if (response != null && response.getResponse() != null) {
+                logDto.setResponseBody(JSONUtil.toJsonStr(response.getResponse()));
+            }
+
+            // 记录策略快照
+            if (policyResult != null && policyResult.getPolicyId() != null) {
+                PolicySnapshotDTO policySnapshot = PolicySnapshotDTO.builder()
+                        .id(policyResult.getPolicyId())
+                        .name(policyResult.getPolicyName())
+                        .type(policyResult.getPolicyType() != null ? policyResult.getPolicyType().getCode() : null)
+                        .action(policyResult.getAction() != null ? policyResult.getAction().getCode() : null)
+                        .conditions(policyResult.getPolicyConditions())
+                        .reason(policyResult.getReason())
+                        .build();
+                logDto.setPolicySnapshot(policySnapshot);
+            }
 
             agentLogService.create(logDto);
         } catch (Exception e) {
@@ -387,7 +377,7 @@ public class ProxyServiceImpl implements ProxyService {
                     .put("method", request.getMethod())
                     .put("url", request.getTargetUrl())
                     .build();
-            
+
             // 添加脱敏后的请求头
             if (CollUtil.isNotEmpty(request.getHeaders())) {
                 String maskedHeaders = maskSensitiveHeaders(request.getHeaders());
@@ -395,18 +385,13 @@ public class ProxyServiceImpl implements ProxyService {
                     summary.put("headers", JSONUtil.parse(maskedHeaders));
                 }
             }
-            
+
             if (CollUtil.isNotEmpty(request.getBody())) {
                 summary.put("bodyKeys", request.getBody().keySet());
             }
             // 记录业务元数据
             if (CollUtil.isNotEmpty(request.getMetadata())) {
                 summary.put("metadata", request.getMetadata());
-            }
-            // 添加策略信息
-            if (policyResult != null && policyResult.getPolicyId() != null) {
-                summary.put("policyId", policyResult.getPolicyId());
-                summary.put("policyAction", policyResult.getAction() != null ? policyResult.getAction().getCode() : null);
             }
             return JSONUtil.toJsonStr(summary);
         } catch (Exception e) {

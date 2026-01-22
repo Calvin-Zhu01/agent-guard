@@ -23,9 +23,6 @@ public enum PolicyAction {
     /** 审批 */
     APPROVAL("APPROVAL", "审批"),
 
-    /** 脱敏 */
-    MASK("MASK", "脱敏"),
-
     /** 限流 */
     RATE_LIMIT("RATE_LIMIT", "限流");
 

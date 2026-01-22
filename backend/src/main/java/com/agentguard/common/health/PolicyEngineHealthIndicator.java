@@ -36,9 +36,6 @@ public class PolicyEngineHealthIndicator implements HealthIndicator {
             long accessControlCount = enabledPolicies.stream()
                     .filter(p -> p.getType() != null && "ACCESS_CONTROL".equals(p.getType().name()))
                     .count();
-            long contentProtectionCount = enabledPolicies.stream()
-                    .filter(p -> p.getType() != null && "CONTENT_PROTECTION".equals(p.getType().name()))
-                    .count();
             long rateLimitCount = enabledPolicies.stream()
                     .filter(p -> p.getType() != null && "RATE_LIMIT".equals(p.getType().name()))
                     .count();
@@ -50,7 +47,6 @@ public class PolicyEngineHealthIndicator implements HealthIndicator {
                     .withDetail("status", "策略引擎运行正常")
                     .withDetail("enabledPolicies", enabledCount)
                     .withDetail("accessControlPolicies", accessControlCount)
-                    .withDetail("contentProtectionPolicies", contentProtectionCount)
                     .withDetail("rateLimitPolicies", rateLimitCount)
                     .withDetail("approvalPolicies", approvalCount)
                     .build();

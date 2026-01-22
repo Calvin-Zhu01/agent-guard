@@ -1,8 +1,10 @@
 package com.agentguard.log.entity;
 
+import com.agentguard.log.dto.PolicySnapshotDTO;
 import com.agentguard.log.enums.RequestType;
 import com.agentguard.log.enums.ResponseStatus;
 import com.baomidou.mybatisplus.annotation.*;
+import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -14,7 +16,7 @@ import java.time.LocalDateTime;
  * @author zhuhx
  */
 @Data
-@TableName("agent_log")
+@TableName(value = "agent_log", autoResultMap = true)
 public class AgentLogDO {
 
     /** 主键ID */
@@ -36,7 +38,16 @@ public class AgentLogDO {
     /** 请求摘要（JSON格式） */
     private String requestSummary;
 
-    /** 响应状态：SUCCESS/FAILED/BLOCKED */
+    /** 请求头（JSON格式） */
+    private String requestHeaders;
+
+    /** 完整请求体（JSON格式） */
+    private String requestBody;
+
+    /** 完整响应体（JSON格式） */
+    private String responseBody;
+
+    /** 响应状态：SUCCESS/FAILED/BLOCKED/PENDING_APPROVAL */
     private ResponseStatus responseStatus;
 
     /** 响应时间（毫秒） */
@@ -54,8 +65,9 @@ public class AgentLogDO {
     /** 成本 */
     private BigDecimal cost;
 
-    /** 触发的策略ID */
-    private String policyId;
+    /** 策略快照（触发策略时的策略信息） */
+    @TableField(typeHandler = JacksonTypeHandler.class)
+    private PolicySnapshotDTO policySnapshot;
 
     /** 创建时间 */
     private LocalDateTime createdAt;

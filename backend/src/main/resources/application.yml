@@ -90,6 +90,12 @@ alert:
     health:
       cron: ${ALERT_SCHEDULER_HEALTH_CRON:0 * * * * ?}
 
+# 代理配置
+agentguard:
+  proxy:
+    # 是否允许访问内网地址，生产环境必须为 false
+    allow-internal-address: false
+
 # Spring Boot Actuator 配置
 management:
   endpoints:

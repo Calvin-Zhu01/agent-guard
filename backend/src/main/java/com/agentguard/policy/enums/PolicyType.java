@@ -17,9 +17,6 @@ public enum PolicyType {
     /** 访问控制 */
     ACCESS_CONTROL("ACCESS_CONTROL", "访问控制"),
 
-    /** 内容保护 */
-    CONTENT_PROTECTION("CONTENT_PROTECTION", "内容保护"),
-
     /** 人工审批 */
     APPROVAL("APPROVAL", "人工审批"),
 

@@ -8,7 +8,23 @@
 export type RequestType = 'API_CALL' | 'LLM_CALL'
 
 /** 响应状态 */
-export type ResponseStatus = 'SUCCESS' | 'FAILED' | 'BLOCKED'
+export type ResponseStatus = 'SUCCESS' | 'FAILED' | 'BLOCKED' | 'PENDING_APPROVAL'
+
+/** 策略类型 */
+export type PolicyType = 'ACCESS_CONTROL' | 'RATE_LIMIT' | 'APPROVAL'
+
+/** 策略动作 */
+export type PolicyAction = 'ALLOW' | 'DENY' | 'APPROVAL' | 'RATE_LIMIT'
+
+/** 策略快照 */
+export interface PolicySnapshot {
+  id: string
+  name: string
+  type: PolicyType
+  action: PolicyAction
+  conditions: string
+  reason: string
+}
 
 /** Agent 日志 */
 export interface AgentLog {
@@ -20,13 +36,16 @@ export interface AgentLog {
   endpoint: string
   method: string
   requestSummary: string
+  requestHeaders: string
+  requestBody: string
+  responseBody: string
   responseStatus: ResponseStatus
   responseTimeMs: number
   tokenInput: number
   tokenOutput: number
   model: string
   cost: number
-  policyId: string
+  policySnapshot: PolicySnapshot | null
   createdAt: string
 }
 

@@ -5,10 +5,10 @@
  */
 
 /** 策略类型 */
-export type PolicyType = 'ACCESS_CONTROL' | 'CONTENT_PROTECTION' | 'APPROVAL' | 'RATE_LIMIT'
+export type PolicyType = 'ACCESS_CONTROL' | 'RATE_LIMIT' | 'APPROVAL'
 
 /** 策略动作 */
-export type PolicyAction = 'ALLOW' | 'DENY' | 'APPROVAL' | 'MASK' | 'RATE_LIMIT'
+export type PolicyAction = 'ALLOW' | 'DENY' | 'APPROVAL' | 'RATE_LIMIT'
 
 /** 策略作用域 */
 export type PolicyScope = 'GLOBAL' | 'AGENT'

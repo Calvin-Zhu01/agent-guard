@@ -43,13 +43,6 @@ const formData = ref({
     action: 'DENY' as 'ALLOW' | 'DENY',
     customConditions: ''
   },
-  // 内容保护配置
-  contentProtection: {
-    mode: 'simple' as 'simple' | 'advanced',
-    sensitiveFields: [] as string[],
-    sensitiveKeywords: '',
-    customConditions: ''
-  },
   // 人工审批配置
   approval: {
     mode: 'simple' as 'simple' | 'advanced',
@@ -76,7 +69,6 @@ type TagType = 'primary' | 'success' | 'warning' | 'info' | 'danger'
 // 策略类型映射
 const policyTypeMap: Record<PolicyType, { label: string; color: TagType; desc: string }> = {
   ACCESS_CONTROL: { label: '访问控制', color: 'primary', desc: '控制 Agent 对特定 API 的访问权限' },
-  CONTENT_PROTECTION: { label: '内容保护', color: 'success', desc: '对敏感信息进行脱敏处理' },
   APPROVAL: { label: '人工审批', color: 'warning', desc: '高风险操作需要人工审批后执行' },
   RATE_LIMIT: { label: '频率限制', color: 'info', desc: '限制 Agent 的请求频率' }
 }
@@ -86,7 +78,6 @@ const policyActionMap: Record<PolicyAction, { label: string; color: TagType }> =
   ALLOW: { label: '允许', color: 'success' },
   DENY: { label: '拒绝', color: 'danger' },
   APPROVAL: { label: '审批', color: 'warning' },
-  MASK: { label: '脱敏', color: 'info' },
   RATE_LIMIT: { label: '限流', color: 'warning' }
 }
 
@@ -105,7 +96,6 @@ const policyScopeOptions: { label: string; value: PolicyScope }[] = [
 // 策略类型选项
 const policyTypeOptions: { label: string; value: PolicyType; desc: string }[] = [
   { label: '访问控制', value: 'ACCESS_CONTROL', desc: '控制 Agent 对特定 API 的访问权限' },
-  { label: '内容保护', value: 'CONTENT_PROTECTION', desc: '对敏感信息进行脱敏处理' },
   { label: '人工审批', value: 'APPROVAL', desc: '高风险操作需要人工审批后执行' },
   { label: '频率限制', value: 'RATE_LIMIT', desc: '限制 Agent 的请求频率' }
 ]
@@ -152,8 +142,6 @@ const computedAction = computed<PolicyAction>(() => {
         }
       }
       return formData.value.accessControl.action
-    case 'CONTENT_PROTECTION':
-      return 'MASK'
     case 'APPROVAL':
       return 'APPROVAL'
     case 'RATE_LIMIT':
@@ -183,24 +171,6 @@ function buildConditionsJson(): string {
           urlPattern: formData.value.accessControl.urlPattern,
           method: formData.value.accessControl.method,
           action: formData.value.accessControl.action
-        }
-      }
-      break
-    case 'CONTENT_PROTECTION':
-      if (formData.value.contentProtection.mode === 'advanced') {
-        try {
-          conditions = JSON.parse(formData.value.contentProtection.customConditions || '{}')
-        } catch {
-          conditions = {}
-        }
-      } else {
-        conditions = {
-          sensitiveFields: formData.value.contentProtection.sensitiveFields,
-          sensitiveKeywords: formData.value.contentProtection.sensitiveKeywords
-            .split(',')
-            .map(s => s.trim())
-            .filter(s => s),
-          action: 'MASK'
         }
       }
       break
@@ -277,22 +247,6 @@ function parseConditionsJson(type: PolicyType, conditionsStr: string) {
           formData.value.accessControl.mode = 'simple'
           formData.value.accessControl.urlPattern = conditions.urlPattern || ''
           formData.value.accessControl.method = conditions.method || 'ALL'
-        }
-        break
-      case 'CONTENT_PROTECTION':
-        // 判断是否为高级模式（有非标准字段）
-        const standardFields = ['sensitiveFields', 'sensitiveKeywords', 'action']
-        const hasAdvancedFields = Object.keys(conditions).some(k => !standardFields.includes(k))
-        if (hasAdvancedFields) {
-          formData.value.contentProtection.mode = 'advanced'
-          formData.value.contentProtection.customConditions = JSON.stringify(conditions, null, 2)
-        } else {
-          formData.value.contentProtection.mode = 'simple'
-          formData.value.contentProtection.sensitiveFields = conditions.sensitiveFields || []
-          formData.value.contentProtection.sensitiveKeywords = 
-            Array.isArray(conditions.sensitiveKeywords) 
-              ? conditions.sensitiveKeywords.join(', ') 
-              : ''
         }
         break
       case 'APPROVAL':
@@ -399,23 +353,6 @@ function formatConditions(type: PolicyType, conditionsStr: string): string {
         return parts.join(' | ')
       }
       
-      case 'CONTENT_PROTECTION': {
-        // 敏感字段
-        if (conditions.sensitiveFields?.length) {
-          parts.push(`字段: ${conditions.sensitiveFields.join(', ')}`)
-        }
-        // 敏感关键词
-        if (conditions.sensitiveKeywords?.length) {
-          parts.push(`关键词: ${conditions.sensitiveKeywords.join(', ')}`)
-        }
-        // 脱敏规则
-        if (conditions.maskRules?.length) {
-          const ruleTypes = conditions.maskRules.map((r: any) => r.type || r.field).join(', ')
-          parts.push(`规则: ${ruleTypes}`)
-        }
-        return parts.length ? parts.join(' | ') : '-'
-      }
-      
       case 'APPROVAL': {
         // URL 模式
         if (conditions.urlPattern) {
@@ -507,12 +444,6 @@ function resetForm() {
       action: 'DENY',
       customConditions: ''
     },
-    contentProtection: {
-      mode: 'simple',
-      sensitiveFields: [],
-      sensitiveKeywords: '',
-      customConditions: ''
-    },
     approval: {
       mode: 'simple',
       simpleType: 'amount_threshold',
@@ -593,20 +524,6 @@ async function handleSubmit() {
           ElMessage.warning('请在 JSON 中指定 action 字段（ALLOW 或 DENY）')
           return
         }
-      } catch {
-        ElMessage.warning('自定义条件 JSON 格式无效')
-        return
-      }
-    }
-  }
-  if (formData.value.type === 'CONTENT_PROTECTION') {
-    if (formData.value.contentProtection.mode === 'advanced') {
-      if (!formData.value.contentProtection.customConditions) {
-        ElMessage.warning('请输入自定义条件 JSON')
-        return
-      }
-      try {
-        JSON.parse(formData.value.contentProtection.customConditions)
       } catch {
         ElMessage.warning('自定义条件 JSON 格式无效')
         return
@@ -1040,83 +957,6 @@ onMounted(() => {
         </template>
 
         <!-- 内容保护配置 -->
-        <template v-if="formData.type === 'CONTENT_PROTECTION'">
-          <el-divider content-position="left">内容保护配置</el-divider>
-          
-          <el-form-item label="配置模式">
-            <el-radio-group v-model="formData.contentProtection.mode">
-              <el-radio value="simple">简单模式</el-radio>
-              <el-radio value="advanced">高级模式</el-radio>
-            </el-radio-group>
-          </el-form-item>
-
-          <!-- 简单模式 -->
-          <template v-if="formData.contentProtection.mode === 'simple'">
-            <el-form-item label="敏感字段">
-              <el-checkbox-group v-model="formData.contentProtection.sensitiveFields">
-                <el-checkbox 
-                  v-for="item in sensitiveFieldOptions" 
-                  :key="item.value" 
-                  :value="item.value"
-                >
-                  {{ item.label }}
-                </el-checkbox>
-              </el-checkbox-group>
-            </el-form-item>
-            <el-form-item label="敏感关键词">
-              <el-input 
-                v-model="formData.contentProtection.sensitiveKeywords" 
-                placeholder="多个关键词用逗号分隔，例如：密码, 身份证, 银行卡"
-              />
-            </el-form-item>
-          </template>
-
-          <!-- 高级模式 -->
-          <template v-else>
-            <el-form-item label="条件 JSON" required>
-              <el-input
-                v-model="formData.contentProtection.customConditions"
-                type="textarea"
-                :rows="8"
-                placeholder='示例：
-{
-  "sensitiveFields": ["phone", "idCard", "bankCard"],
-  "sensitiveKeywords": ["密码", "身份证"],
-  "urlPattern": "/api/user/.*",
-  "maskRules": {
-    "phone": { "start": 3, "end": 4, "char": "*" }
-  }
-}'
-              />
-            </el-form-item>
-            <el-collapse>
-              <el-collapse-item title="条件配置说明">
-                <div class="help-content">
-                  <p><strong>支持的配置字段：</strong></p>
-                  <ul>
-                    <li><code>sensitiveFields</code> - 需要脱敏的字段名数组</li>
-                    <li><code>sensitiveKeywords</code> - 敏感关键词数组</li>
-                    <li><code>urlPattern</code> - 仅对匹配的 URL 生效</li>
-                    <li><code>maskRules</code> - 自定义脱敏规则</li>
-                  </ul>
-                  <p><strong>示例：</strong>自定义手机号脱敏规则</p>
-                  <pre class="code-block">{
-  "sensitiveFields": ["phone"],
-  "maskRules": {
-    "phone": { "start": 3, "end": 4, "char": "*" }
-  }
-}</pre>
-                  <p class="example-explain">手机号保留前3位和后4位，中间用*替换：138****1234</p>
-                </div>
-              </el-collapse-item>
-            </el-collapse>
-          </template>
-
-          <el-alert type="info" :closable="false" show-icon>
-            匹配到敏感信息时，系统将自动进行脱敏处理（如：138****1234）
-          </el-alert>
-        </template>
-
         <!-- 人工审批配置 -->
         <template v-if="formData.type === 'APPROVAL'">
           <el-divider content-position="left">审批触发条件</el-divider>

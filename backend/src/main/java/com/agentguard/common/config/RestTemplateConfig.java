@@ -1,16 +1,14 @@
 package com.agentguard.common.config;
 
-import org.apache.http.client.config.RequestConfig;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClients;
-import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
-import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.apache.hc.client5.http.config.RequestConfig;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
+import org.apache.hc.core5.util.Timeout;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
-
-import java.time.Duration;
 
 /**
  * RestTemplate 配置类
@@ -28,17 +26,14 @@ public class RestTemplateConfig {
      * - 连接池：最大连接数 100，每个路由最大连接数 50
      */
     @Bean
-    public RestTemplate restTemplate(RestTemplateBuilder builder) {
-        return builder
-                .setConnectTimeout(Duration.ofSeconds(5))
-                .setReadTimeout(Duration.ofSeconds(30))
-                .requestFactory(this::createRequestFactory)
-                .build();
+    public RestTemplate restTemplate() {
+        HttpComponentsClientHttpRequestFactory factory = createRequestFactory();
+        return new RestTemplate(factory);
     }
 
     /**
      * 创建 HttpComponentsClientHttpRequestFactory
-     * 配置 Apache HttpClient 连接池
+     * 配置 Apache HttpClient 5.x 连接池
      */
     private HttpComponentsClientHttpRequestFactory createRequestFactory() {
         // 配置连接池
@@ -46,10 +41,10 @@ public class RestTemplateConfig {
         connectionManager.setMaxTotal(100);
         connectionManager.setDefaultMaxPerRoute(50);
 
-        // 配置请求参数
+        // 配置请求参数（使用 HttpClient 5.x API）
         RequestConfig requestConfig = RequestConfig.custom()
-                .setConnectTimeout(5000)
-                .setSocketTimeout(30000)
+                .setConnectTimeout(Timeout.ofSeconds(5))
+                .setResponseTimeout(Timeout.ofSeconds(30))
                 .build();
 
         // 创建 HttpClient
@@ -59,9 +54,6 @@ public class RestTemplateConfig {
                 .build();
 
         // 创建请求工厂
-        HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory();
-        factory.setHttpClient(httpClient);
-
-        return factory;
+        return new HttpComponentsClientHttpRequestFactory(httpClient);
     }
 }

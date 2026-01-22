@@ -6,8 +6,6 @@ import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
-import com.agentguard.policy.dto.MaskConfig;
-import com.agentguard.policy.dto.MaskRule;
 import com.agentguard.policy.dto.PolicyDTO;
 import com.agentguard.policy.dto.PolicyResult;
 import com.agentguard.policy.dto.RateLimitResult;
@@ -16,9 +14,8 @@ import com.agentguard.policy.enums.PolicyScope;
 import com.agentguard.policy.enums.PolicyType;
 import com.agentguard.policy.service.PolicyService;
 import com.agentguard.policy.service.RateLimiterService;
-import jakarta.annotation.PostConstruct;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
@@ -44,7 +41,6 @@ import java.util.stream.Collectors;
 @Slf4j
 @Primary
 @Component("configurablePolicyEngine")
-@RequiredArgsConstructor
 public class ConfigurablePolicyEngine implements PolicyEngine {
 
     private final PolicyService policyService;
@@ -55,10 +51,32 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
     
     /** 缓存的Agent级别策略列表（按agentId分组，每组按优先级降序排列） - 使用 volatile 保证可见性 */
     private volatile Map<String, List<PolicyDTO>> agentPoliciesMap = new java.util.HashMap<>();
+    
+    /** 标记是否已初始化 */
+    private volatile boolean initialized = false;
 
-    @PostConstruct
-    public void init() {
-        refreshPolicies();
+    /**
+     * 构造函数
+     * 使用 @Lazy 注解打破与 PolicyService 的循环依赖
+     */
+    public ConfigurablePolicyEngine(@Lazy PolicyService policyService, RateLimiterService rateLimiterService) {
+        this.policyService = policyService;
+        this.rateLimiterService = rateLimiterService;
+    }
+
+    /**
+     * 延迟初始化策略缓存
+     * 在第一次调用 evaluate 时触发
+     */
+    private void ensureInitialized() {
+        if (!initialized) {
+            synchronized (this) {
+                if (!initialized) {
+                    refreshPolicies();
+                    initialized = true;
+                }
+            }
+        }
     }
 
     @Override
@@ -85,21 +103,29 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
      */
     public PolicyResult evaluate(String targetUrl, String method, Map<String, String> headers, 
                                   Map<String, Object> body, String agentId, String clientIp) {
+        // 确保策略已初始化
+        ensureInitialized();
+        
+        log.debug("开始评估策略: targetUrl={}, method={}, agentId={}", targetUrl, method, agentId);
+        
         // 获取按优先级排序的策略列表（Agent级别优先）
         List<PolicyDTO> sortedPolicies = getSortedPoliciesForAgent(agentId);
+        log.debug("找到 {} 条待评估策略", sortedPolicies.size());
 
         // 按优先级顺序评估策略
         for (PolicyDTO policy : sortedPolicies) {
+            log.debug("检查策略: id={}, name={}, type={}", policy.getId(), policy.getName(), policy.getType());
             if (matchesPolicy(policy, targetUrl, method, headers, body)) {
+                log.info("策略匹配成功: id={}, name={}, action={}", policy.getId(), policy.getName(), policy.getAction());
                 PolicyResult result = createResult(policy, targetUrl, headers, body, clientIp);
                 // 如果策略结果是阻止或需要特殊处理，立即返回
-                if (result.isBlocked() || result.isRequireApproval() || result.isRequireMask() 
-                        || result.getRateLimitResult() != null) {
+                if (result.isBlocked() || result.isRequireApproval() || result.getRateLimitResult() != null) {
                     return result;
                 }
             }
         }
         // 无匹配策略，默认允许
+        log.debug("未找到匹配的策略，允许请求通过");
         return PolicyResult.allow();
     }
 
@@ -218,12 +244,16 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
         // 检查URL模式
         String urlPattern = conditions.getStr("urlPattern");
         if (StrUtil.isNotBlank(urlPattern) && !matchesUrlPattern(targetUrl, urlPattern)) {
+            log.debug("URL模式不匹配: urlPattern={}", urlPattern);
             return false;
         }
 
         // 检查HTTP方法
         String methodCondition = conditions.getStr("method");
-        if (StrUtil.isNotBlank(methodCondition) && !methodCondition.equalsIgnoreCase(method)) {
+        if (StrUtil.isNotBlank(methodCondition) 
+                && !"ALL".equalsIgnoreCase(methodCondition) 
+                && !methodCondition.equalsIgnoreCase(method)) {
+            log.debug("HTTP方法不匹配: 期望={}, 实际={}", methodCondition, method);
             return false;
         }
 
@@ -231,6 +261,7 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
         if (conditions.containsKey("bodyConditions")) {
             List<JSONObject> bodyConditions = conditions.getBeanList("bodyConditions", JSONObject.class);
             if (CollUtil.isNotEmpty(bodyConditions) && !evaluateBodyConditions(bodyConditions, body)) {
+                log.debug("请求体条件不匹配");
                 return false;
             }
         }
@@ -239,10 +270,12 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
         if (conditions.containsKey("headerConditions")) {
             List<JSONObject> headerConditions = conditions.getBeanList("headerConditions", JSONObject.class);
             if (CollUtil.isNotEmpty(headerConditions) && !evaluateHeaderConditions(headerConditions, headers)) {
+                log.debug("请求头条件不匹配");
                 return false;
             }
         }
 
+        log.debug("所有条件匹配成功");
         return true;
     }
 
@@ -259,9 +292,11 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
         }
         try {
             Pattern pattern = Pattern.compile(urlPattern);
-            return pattern.matcher(targetUrl).find();
+            boolean matches = pattern.matcher(targetUrl).find();
+            log.debug("URL模式匹配: targetUrl={}, pattern={}, matches={}", targetUrl, urlPattern, matches);
+            return matches;
         } catch (PatternSyntaxException e) {
-            log.warn("Invalid URL pattern: {}", urlPattern);
+            log.warn("无效的URL正则模式: {}", urlPattern);
             return false;
         }
     }
@@ -477,7 +512,6 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
      * 
      * 根据策略类型调用不同的处理逻辑：
      * - ACCESS_CONTROL: 访问控制，优先使用 conditions JSON 中的 action 字段
-     * - CONTENT_PROTECTION: 内容保护，创建脱敏配置
      * - RATE_LIMIT: 频率限制，调用限流服务
      * - APPROVAL: 人工审批
      *
@@ -499,7 +533,6 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
 
         return switch (policyType) {
             case ACCESS_CONTROL -> createAccessControlResult(policy);
-            case CONTENT_PROTECTION -> createContentProtectionResult(policy, targetUrl);
             case RATE_LIMIT -> createRateLimitResult(policy, targetUrl, headers, body, clientIp);
             case APPROVAL -> createApprovalResult(policy);
         };
@@ -514,93 +547,22 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
 
         return switch (action) {
             case ALLOW -> PolicyResult.allow();
-            case DENY -> PolicyResult.block(policy.getId(), action, reason);
-            case APPROVAL -> PolicyResult.requireApproval(policy.getId(), reason);
-            case MASK -> PolicyResult.block(policy.getId(), action, reason);
-            case RATE_LIMIT -> PolicyResult.block(policy.getId(), action, reason);
+            case DENY -> PolicyResult.block(policy.getId(), policy.getName(), policy.getType(),
+                    policy.getConditions(), action, reason);
+            case APPROVAL -> PolicyResult.requireApproval(policy.getId(), policy.getName(), policy.getType(),
+                    policy.getConditions(), reason);
+            case RATE_LIMIT -> PolicyResult.block(policy.getId(), policy.getName(), policy.getType(),
+                    policy.getConditions(), action, reason);
         };
     }
 
     /**
-     * 创建内容保护策略结果
-     * 
-     * 解析 sensitiveFields、sensitiveKeywords、maskRules 配置，创建 MaskConfig
+     * 创建人工审批策略结果
      */
-    private PolicyResult createContentProtectionResult(PolicyDTO policy, String targetUrl) {
-        if (StrUtil.isBlank(policy.getConditions())) {
-            log.warn("Content protection policy {} has no conditions", policy.getId());
-            return PolicyResult.allow();
-        }
-
-        try {
-            JSONObject conditions = JSONUtil.parseObj(policy.getConditions());
-            
-            // 检查 URL 模式是否匹配
-            String urlPattern = conditions.getStr("urlPattern");
-            if (StrUtil.isNotBlank(urlPattern) && !matchesUrlPattern(targetUrl, urlPattern)) {
-                return PolicyResult.allow();
-            }
-
-            // 解析脱敏配置
-            MaskConfig maskConfig = parseMaskConfig(conditions);
-            
-            if (ObjectUtil.isNull(maskConfig) || 
-                    (CollUtil.isEmpty(maskConfig.getSensitiveFields()) 
-                            && CollUtil.isEmpty(maskConfig.getSensitiveKeywords())
-                            && CollUtil.isEmpty(maskConfig.getMaskRules()))) {
-                log.warn("Content protection policy {} has no mask configuration", policy.getId());
-                return PolicyResult.allow();
-            }
-
-            String reason = buildReason(policy, PolicyAction.MASK);
-            return PolicyResult.mask(policy.getId(), maskConfig, reason);
-        } catch (Exception e) {
-            log.error("Failed to parse content protection policy {}: {}", policy.getId(), e.getMessage());
-            return PolicyResult.allow();
-        }
-    }
-
-    /**
-     * 解析脱敏配置
-     */
-    private MaskConfig parseMaskConfig(JSONObject conditions) {
-        MaskConfig config = new MaskConfig();
-
-        // 解析 sensitiveFields
-        if (conditions.containsKey("sensitiveFields")) {
-            List<String> sensitiveFields = conditions.getBeanList("sensitiveFields", String.class);
-            config.setSensitiveFields(sensitiveFields);
-        }
-
-        // 解析 sensitiveKeywords
-        if (conditions.containsKey("sensitiveKeywords")) {
-            List<String> sensitiveKeywords = conditions.getBeanList("sensitiveKeywords", String.class);
-            config.setSensitiveKeywords(sensitiveKeywords);
-        }
-
-        // 解析 maskRules
-        if (conditions.containsKey("maskRules")) {
-            JSONObject maskRulesJson = conditions.getJSONObject("maskRules");
-            if (ObjectUtil.isNotNull(maskRulesJson)) {
-                Map<String, MaskRule> maskRules = new HashMap<>();
-                for (String fieldName : maskRulesJson.keySet()) {
-                    JSONObject ruleJson = maskRulesJson.getJSONObject(fieldName);
-                    if (ObjectUtil.isNotNull(ruleJson)) {
-                        MaskRule rule = new MaskRule();
-                        rule.setStart(ruleJson.getInt("start", 0));
-                        rule.setEnd(ruleJson.getInt("end", 0));
-                        rule.setMaskChar(ruleJson.getStr("maskChar", "*"));
-                        maskRules.put(fieldName, rule);
-                    }
-                }
-                config.setMaskRules(maskRules);
-            }
-        }
-
-        // 解析 urlPattern
-        config.setUrlPattern(conditions.getStr("urlPattern"));
-
-        return config;
+    private PolicyResult createApprovalResult(PolicyDTO policy) {
+        String reason = buildReason(policy, PolicyAction.APPROVAL);
+        return PolicyResult.requireApproval(policy.getId(), policy.getName(), policy.getType(),
+                policy.getConditions(), reason);
     }
 
     /**
@@ -608,9 +570,8 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
      * 
      * 解析 windowSeconds、maxRequests、keyExtractor、urlPattern 配置，调用限流服务
      */
-    private PolicyResult createRateLimitResult(PolicyDTO policy, String targetUrl, 
-                                                Map<String, String> headers, Map<String, Object> body, 
-                                                String clientIp) {
+    private PolicyResult createRateLimitResult(PolicyDTO policy, String targetUrl, Map<String, String> headers, 
+                                                Map<String, Object> body, String clientIp) {
         if (StrUtil.isBlank(policy.getConditions())) {
             log.warn("Rate limit policy {} has no conditions", policy.getId());
             return PolicyResult.allow();
@@ -631,17 +592,14 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
             String keyExtractor = conditions.getStr("keyExtractor", "ip");
 
             // 提取限流键
-            String rateLimitKey = policy.getId() + ":" + 
-                    rateLimiterService.extractKey(keyExtractor, headers, body, clientIp);
+            String rateLimitKey = policy.getId() + ":" + rateLimiterService.extractKey(keyExtractor, headers, body, clientIp);
 
             // 检查限流
             RateLimitResult rateLimitResult = rateLimiterService.checkLimit(rateLimitKey, windowSeconds, maxRequests);
+            String reason = rateLimitResult.isAllowed() ? null : buildRateLimitReason(policy, rateLimitResult);
 
-            String reason = rateLimitResult.isAllowed() 
-                    ? null 
-                    : buildRateLimitReason(policy, rateLimitResult);
-
-            return PolicyResult.rateLimit(policy.getId(), rateLimitResult, reason);
+            return PolicyResult.rateLimit(policy.getId(), policy.getName(), policy.getType(),
+                    policy.getConditions(), rateLimitResult, reason);
         } catch (Exception e) {
             log.error("Failed to evaluate rate limit policy {}: {}", policy.getId(), e.getMessage());
             // 限流评估失败，降级为允许通过
@@ -655,14 +613,6 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
     private String buildRateLimitReason(PolicyDTO policy, RateLimitResult result) {
         String policyName = StrUtil.isNotBlank(policy.getName()) ? policy.getName() : policy.getId();
         return String.format("请求被限流（策略：%s）：%s", policyName, result.getReason());
-    }
-
-    /**
-     * 创建人工审批策略结果
-     */
-    private PolicyResult createApprovalResult(PolicyDTO policy) {
-        String reason = buildReason(policy, PolicyAction.APPROVAL);
-        return PolicyResult.requireApproval(policy.getId(), reason);
     }
 
     /**
@@ -738,7 +688,6 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
         String actionDesc = switch (action) {
             case DENY -> "请求被拒绝";
             case APPROVAL -> "需要审批";
-            case MASK -> "内容需要脱敏处理";
             case RATE_LIMIT -> "请求被限流";
             default -> "策略拦截";
         };
