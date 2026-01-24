@@ -53,6 +53,12 @@ public class AgentLogDO {
     /** 响应时间（毫秒） */
     private Integer responseTimeMs;
 
+    /** 完成原因：stop/length/content_filter/function_call */
+    private String finishReason;
+
+    /** 首token响应时间（毫秒），仅流式请求 */
+    private Integer firstTokenTimeMs;
+
     /** 输入token数 */
     private Integer tokenInput;
 

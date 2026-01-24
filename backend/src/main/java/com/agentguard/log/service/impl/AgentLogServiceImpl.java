@@ -101,16 +101,19 @@ public class AgentLogServiceImpl implements AgentLogService {
     }
 
     @Override
-    public IPage<AgentLogDTO> page(Page<AgentLogDTO> page, String agentId, ResponseStatus responseStatus) {
+    public IPage<AgentLogDTO> page(Page<AgentLogDTO> page, String agentId, ResponseStatus responseStatus, RequestType requestType) {
         LambdaQueryWrapper<AgentLogDO> wrapper = new LambdaQueryWrapper<>();
-        
+
         if (StrUtil.isNotBlank(agentId)) {
             wrapper.eq(AgentLogDO::getAgentId, agentId);
         }
         if (responseStatus != null) {
             wrapper.eq(AgentLogDO::getResponseStatus, responseStatus);
         }
-        
+        if (requestType != null) {
+            wrapper.eq(AgentLogDO::getRequestType, requestType);
+        }
+
         // 按创建时间倒序排列
         wrapper.orderByDesc(AgentLogDO::getCreatedAt);
 

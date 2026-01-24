@@ -2,6 +2,7 @@ package com.agentguard.log.service;
 
 import com.agentguard.log.dto.AgentLogCreateDTO;
 import com.agentguard.log.dto.AgentLogDTO;
+import com.agentguard.log.enums.RequestType;
 import com.agentguard.log.enums.ResponseStatus;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -35,7 +36,8 @@ public interface AgentLogService {
      * @param page 分页参数
      * @param agentId Agent ID过滤（可选）
      * @param responseStatus 响应状态过滤（可选）
+     * @param requestType 请求类型过滤（可选）
      * @return 分页结果
      */
-    IPage<AgentLogDTO> page(Page<AgentLogDTO> page, String agentId, ResponseStatus responseStatus);
+    IPage<AgentLogDTO> page(Page<AgentLogDTO> page, String agentId, ResponseStatus responseStatus, RequestType requestType);
 }

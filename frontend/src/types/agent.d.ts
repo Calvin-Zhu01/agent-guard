@@ -3,6 +3,10 @@ export interface Agent {
   name: string
   apiKey: string
   description?: string
+  llmProvider?: string
+  llmApiKey?: string
+  llmBaseUrl?: string
+  llmModel?: string
   lastActiveAt?: string
   createdAt: string
   updatedAt: string
@@ -18,11 +22,19 @@ export interface PolicySummary {
 export interface AgentCreateDTO {
   name: string
   description?: string
+  llmProvider?: string
+  llmApiKey?: string
+  llmBaseUrl?: string
+  llmModel?: string
 }
 
 export interface AgentUpdateDTO {
   name?: string
   description?: string
+  llmProvider?: string
+  llmApiKey?: string
+  llmBaseUrl?: string
+  llmModel?: string
 }
 
 export interface AgentListParams {

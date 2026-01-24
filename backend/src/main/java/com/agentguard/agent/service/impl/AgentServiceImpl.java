@@ -110,12 +110,29 @@ public class AgentServiceImpl implements AgentService {
         return toDTO(agentDO);
     }
 
+    @Override
+    public AgentDTO getByApiKeyForProxy(String apiKey) {
+        AgentDO agentDO = agentMapper.selectOne(
+                new LambdaQueryWrapper<AgentDO>().eq(AgentDO::getApiKey, apiKey)
+        );
+        if (ObjectUtil.isNull(agentDO)) {
+            return null;
+        }
+        // 返回未脱敏的 DTO（用于代理服务内部使用）
+        return toDTOWithoutMasking(agentDO);
+    }
+
     /**
      * 转换为 DTO，包含策略信息
      */
     private AgentDTO toDTO(AgentDO agentDO) {
         AgentDTO dto = BeanUtil.copyProperties(agentDO, AgentDTO.class);
-        
+
+        // 脱敏 LLM API Key（只显示前缀和后4位）
+        if (StrUtil.isNotBlank(agentDO.getLlmApiKey())) {
+            dto.setLlmApiKey(maskApiKey(agentDO.getLlmApiKey()));
+        }
+
         // 查询绑定的策略
         List<String> policyIds = bindingMapper.selectPolicyIdsByAgentId(agentDO.getId());
         if (!policyIds.isEmpty()) {
@@ -131,8 +148,49 @@ public class AgentServiceImpl implements AgentService {
                     .collect(Collectors.toList());
             dto.setPolicies(policySummaries);
         }
-        
+
         return dto;
+    }
+
+    /**
+     * 转换为 DTO（不脱敏，用于代理服务内部使用）
+     */
+    private AgentDTO toDTOWithoutMasking(AgentDO agentDO) {
+        AgentDTO dto = BeanUtil.copyProperties(agentDO, AgentDTO.class);
+
+        // 不脱敏 LLM API Key，保留真实密钥用于代理转发
+        // 注意：此方法仅供内部代理服务使用，不应暴露给外部API
+
+        // 查询绑定的策略
+        List<String> policyIds = bindingMapper.selectPolicyIdsByAgentId(agentDO.getId());
+        if (!policyIds.isEmpty()) {
+            List<PolicyDO> policies = policyMapper.selectBatchIds(policyIds);
+            List<AgentDTO.PolicySummaryDTO> policySummaries = policies.stream()
+                    .map(policy -> {
+                        AgentDTO.PolicySummaryDTO summary = new AgentDTO.PolicySummaryDTO();
+                        summary.setId(policy.getId());
+                        summary.setName(policy.getName());
+                        summary.setEnabled(policy.getEnabled());
+                        return summary;
+                    })
+                    .collect(Collectors.toList());
+            dto.setPolicies(policySummaries);
+        }
+
+        return dto;
+    }
+
+    /**
+     * 脱敏 API Key
+     * 例如：sk-1234567890abcdef -> sk-***abcdef
+     */
+    private String maskApiKey(String apiKey) {
+        if (StrUtil.isBlank(apiKey) || apiKey.length() <= 10) {
+            return "***";
+        }
+        String prefix = apiKey.substring(0, 3);
+        String suffix = apiKey.substring(apiKey.length() - 6);
+        return prefix + "***" + suffix;
     }
 
     private String generateApiKey() {

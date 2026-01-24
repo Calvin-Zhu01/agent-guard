@@ -4,17 +4,18 @@
  *
  * @author zhuhx
  */
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { Refresh, View } from '@element-plus/icons-vue'
 import * as logApi from '@/api/log'
 import * as agentApi from '@/api/agent'
-import type { AgentLog, AgentLogListParams, ResponseStatus, PolicyAction, PolicyType } from '@/types/log'
+import type { AgentLog, AgentLogListParams, ResponseStatus, PolicyAction, PolicyType, RequestType } from '@/types/log'
 import type { Agent } from '@/types/agent'
 
 const loading = ref(false)
 const logs = ref<AgentLog[]>([])
 const total = ref(0)
 const agents = ref<Agent[]>([])
+const activeTab = ref<RequestType>('LLM_CALL') // 默认显示LLM调用
 
 const queryParams = ref<AgentLogListParams>({
   current: 1,
@@ -127,7 +128,8 @@ async function fetchData() {
   try {
     const params: AgentLogListParams = {
       current: queryParams.value.current,
-      size: queryParams.value.size
+      size: queryParams.value.size,
+      requestType: activeTab.value
     }
     if (queryParams.value.agentId) {
       params.agentId = queryParams.value.agentId
@@ -221,9 +223,34 @@ function formatDateTime(dateStr: string): string {
   return dateStr.replace('T', ' ').substring(0, 19)
 }
 
+// 根据响应时间获取颜色类型（总用时）
+function getResponseTimeType(timeMs: number): 'success' | 'warning' | 'danger' | '' {
+  if (timeMs < 60000) return 'success'  // < 60s 绿色
+  return 'danger'  // >= 60s 红色
+}
+
+// 根据首token时间获取颜色类型
+function getFirstTokenTimeType(timeMs: number): 'success' | 'warning' | 'danger' | '' {
+  if (timeMs < 3000) return 'success'  // < 3s 绿色
+  if (timeMs < 10000) return 'warning'  // 3-10s 黄色
+  return 'danger'  // > 10s 红色
+}
+
+// 格式化成本显示
+function formatCost(cost: number): string {
+  if (!cost) return '-'
+  return `¥${cost.toFixed(6)}`
+}
+
 onMounted(() => {
   fetchData()
   fetchAgents()
+})
+
+// 监听Tab切换，重新获取数据
+watch(activeTab, () => {
+  queryParams.value.current = 1 // 切换Tab时重置到第一页
+  fetchData()
 })
 </script>
 
@@ -273,52 +300,108 @@ onMounted(() => {
         </el-form-item>
       </el-form>
 
-      <el-table :data="logs" v-loading="loading" stripe>
-        <el-table-column prop="createdAt" label="时间" width="180">
-          <template #default="{ row }">
-            {{ formatDateTime(row.createdAt) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="agentName" label="Agent" width="150" />
-        <el-table-column prop="requestType" label="请求类型" width="100">
-          <template #default="{ row }">
-            {{ requestTypeLabels[row.requestType] || row.requestType }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="endpoint" label="端点" min-width="200" show-overflow-tooltip />
-        <el-table-column prop="method" label="方法" width="80" />
-        <el-table-column prop="responseStatus" label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="getStatusType(row.responseStatus)" effect="dark">
-              {{ getStatusLabel(row.responseStatus) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="触发策略" width="150">
-          <template #default="{ row }">
-            <template v-if="row.policySnapshot">
-              <el-tooltip :content="row.policySnapshot.reason" placement="top" :disabled="!row.policySnapshot.reason">
-                <el-tag :type="getPolicyActionType(row.policySnapshot.action)" effect="plain" size="small">
-                  {{ row.policySnapshot.name || row.policySnapshot.id }}
+      <!-- Tab切换 -->
+      <el-tabs v-model="activeTab" class="log-tabs">
+        <el-tab-pane label="LLM调用" name="LLM_CALL">
+          <el-table :data="logs" v-loading="loading" stripe>
+            <el-table-column prop="createdAt" label="时间" width="180">
+              <template #default="{ row }">
+                {{ formatDateTime(row.createdAt) }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="agentName" label="Agent" width="150" />
+            <el-table-column prop="model" label="模型" min-width="200" show-overflow-tooltip />
+            <el-table-column label="用时/首字" width="140">
+              <template #default="{ row }">
+                <div class="time-cell">
+                  <el-tag :type="getResponseTimeType(row.responseTimeMs)" effect="light" size="small">
+                    {{ row.responseTimeMs ? `${(row.responseTimeMs / 1000).toFixed(1)}s` : '-' }}
+                  </el-tag>
+                  <el-tag v-if="row.firstTokenTimeMs" :type="getFirstTokenTimeType(row.firstTokenTimeMs)" effect="light" size="small">
+                    {{ (row.firstTokenTimeMs / 1000).toFixed(1) }}s
+                  </el-tag>
+                  <el-tag v-if="!row.firstTokenTimeMs" type="info" effect="light" size="small">
+                    非流
+                  </el-tag>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column prop="tokenInput" label="输入" width="80" align="right" />
+            <el-table-column prop="tokenOutput" label="输出" width="80" align="right" />
+            <el-table-column label="花费" width="110" align="right">
+              <template #default="{ row }">
+                {{ formatCost(row.cost) }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="responseStatus" label="状态" width="100">
+              <template #default="{ row }">
+                <el-tag :type="getStatusType(row.responseStatus)" effect="dark" size="small">
+                  {{ getStatusLabel(row.responseStatus) }}
                 </el-tag>
-              </el-tooltip>
-            </template>
-            <span v-else class="text-muted">-</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="responseTimeMs" label="响应时间" width="100">
-          <template #default="{ row }">
-            {{ row.responseTimeMs ? `${row.responseTimeMs}ms` : '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="100" fixed="right">
-          <template #default="{ row }">
-            <el-button type="primary" link :icon="View" @click="handleViewDetail(row)">
-              详情
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+              </template>
+            </el-table-column>
+            <el-table-column label="完成原因" width="110">
+              <template #default="{ row }">
+                <el-tag v-if="row.finishReason" :type="row.finishReason === 'stop' ? 'success' : 'warning'" effect="plain" size="small">
+                  {{ row.finishReason }}
+                </el-tag>
+                <span v-else class="text-muted">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="80">
+              <template #default="{ row }">
+                <el-button type="primary" link :icon="View" @click="handleViewDetail(row)">
+                  详情
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
+
+        <el-tab-pane label="API调用" name="API_CALL">
+          <el-table :data="logs" v-loading="loading" stripe>
+            <el-table-column prop="createdAt" label="时间" width="180">
+              <template #default="{ row }">
+                {{ formatDateTime(row.createdAt) }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="agentName" label="Agent" width="150" />
+            <el-table-column prop="endpoint" label="端点" min-width="200" show-overflow-tooltip />
+            <el-table-column prop="method" label="方法" width="80" />
+            <el-table-column prop="responseStatus" label="状态" width="100">
+              <template #default="{ row }">
+                <el-tag :type="getStatusType(row.responseStatus)" effect="dark">
+                  {{ getStatusLabel(row.responseStatus) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="触发策略" width="150">
+              <template #default="{ row }">
+                <template v-if="row.policySnapshot">
+                  <el-tooltip :content="row.policySnapshot.reason" placement="top" :disabled="!row.policySnapshot.reason">
+                    <el-tag :type="getPolicyActionType(row.policySnapshot.action)" effect="plain" size="small">
+                      {{ row.policySnapshot.name || row.policySnapshot.id }}
+                    </el-tag>
+                  </el-tooltip>
+                </template>
+                <span v-else class="text-muted">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="responseTimeMs" label="响应时间" width="100">
+              <template #default="{ row }">
+                {{ row.responseTimeMs ? `${row.responseTimeMs}ms` : '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="100" fixed="right">
+              <template #default="{ row }">
+                <el-button type="primary" link :icon="View" @click="handleViewDetail(row)">
+                  详情
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
+      </el-tabs>
 
       <el-pagination
         v-model:current-page="queryParams.current"
@@ -345,6 +428,14 @@ onMounted(() => {
             </el-descriptions-item>
             <el-descriptions-item label="端点" :span="3">{{ currentLog.endpoint }}</el-descriptions-item>
             <el-descriptions-item label="响应时间">{{ currentLog.responseTimeMs ? `${currentLog.responseTimeMs}ms` : '-' }}</el-descriptions-item>
+            <el-descriptions-item v-if="currentLog.requestType === 'LLM_CALL'" label="模型" :span="2">{{ currentLog.model || '-' }}</el-descriptions-item>
+            <el-descriptions-item v-if="currentLog.requestType === 'LLM_CALL'" label="首token时间">
+              {{ currentLog.firstTokenTimeMs ? `${currentLog.firstTokenTimeMs}ms` : '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item v-if="currentLog.requestType === 'LLM_CALL'" label="输入Token">{{ currentLog.tokenInput || '-' }}</el-descriptions-item>
+            <el-descriptions-item v-if="currentLog.requestType === 'LLM_CALL'" label="输出Token">{{ currentLog.tokenOutput || '-' }}</el-descriptions-item>
+            <el-descriptions-item v-if="currentLog.requestType === 'LLM_CALL'" label="成本">{{ formatCost(currentLog.cost) }}</el-descriptions-item>
+            <el-descriptions-item v-if="currentLog.requestType === 'LLM_CALL'" label="完成原因">{{ currentLog.finishReason || '-' }}</el-descriptions-item>
           </el-descriptions>
         </div>
 
@@ -428,6 +519,16 @@ onMounted(() => {
 
 .text-muted {
   color: var(--el-text-color-placeholder);
+}
+
+.log-tabs {
+  margin-top: 16px;
+}
+
+.time-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .detail-container {

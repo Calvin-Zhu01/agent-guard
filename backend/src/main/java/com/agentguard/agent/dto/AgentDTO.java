@@ -28,6 +28,18 @@ public class AgentDTO {
     @Schema(description = "描述信息")
     private String description;
 
+    @Schema(description = "LLM提供商：openai/anthropic/azure")
+    private String llmProvider;
+
+    @Schema(description = "真实的LLM API密钥（脱敏显示）")
+    private String llmApiKey;
+
+    @Schema(description = "LLM API地址")
+    private String llmBaseUrl;
+
+    @Schema(description = "默认模型")
+    private String llmModel;
+
     @Schema(description = "最后活跃时间")
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime lastActiveAt;

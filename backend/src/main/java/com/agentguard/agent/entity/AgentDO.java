@@ -27,6 +27,18 @@ public class AgentDO {
     /** 描述信息 */
     private String description;
 
+    /** LLM提供商：openai/anthropic/azure */
+    private String llmProvider;
+
+    /** 真实的LLM API密钥（加密存储） */
+    private String llmApiKey;
+
+    /** LLM API地址 */
+    private String llmBaseUrl;
+
+    /** 默认模型 */
+    private String llmModel;
+
     /** 最后活跃时间 */
     private LocalDateTime lastActiveAt;
 

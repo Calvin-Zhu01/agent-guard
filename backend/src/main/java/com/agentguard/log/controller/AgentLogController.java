@@ -2,6 +2,7 @@ package com.agentguard.log.controller;
 
 import com.agentguard.common.response.Result;
 import com.agentguard.log.dto.AgentLogDTO;
+import com.agentguard.log.enums.RequestType;
 import com.agentguard.log.enums.ResponseStatus;
 import com.agentguard.log.service.AgentLogService;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -31,9 +32,10 @@ public class AgentLogController {
             @Parameter(description = "当前页码") @RequestParam(defaultValue = "1") Integer current,
             @Parameter(description = "每页大小") @RequestParam(defaultValue = "10") Integer size,
             @Parameter(description = "Agent ID过滤") @RequestParam(required = false) String agentId,
-            @Parameter(description = "响应状态过滤") @RequestParam(required = false) ResponseStatus responseStatus) {
+            @Parameter(description = "响应状态过滤") @RequestParam(required = false) ResponseStatus responseStatus,
+            @Parameter(description = "请求类型过滤") @RequestParam(required = false) RequestType requestType) {
         Page<AgentLogDTO> page = new Page<>(current, size);
-        return Result.success(agentLogService.page(page, agentId, responseStatus));
+        return Result.success(agentLogService.page(page, agentId, responseStatus, requestType));
     }
 
     @Operation(summary = "获取日志详情")

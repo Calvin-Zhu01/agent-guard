@@ -29,6 +29,10 @@ CREATE TABLE IF NOT EXISTS `agent` (
     `name` VARCHAR(100) NOT NULL COMMENT 'Agent名称',
     `api_key` VARCHAR(64) NOT NULL COMMENT 'API密钥',
     `description` TEXT COMMENT '描述',
+    `llm_provider` VARCHAR(50) COMMENT 'LLM提供商：openai/anthropic/azure',
+    `llm_api_key` VARCHAR(256) COMMENT '真实的LLM API密钥（加密存储）',
+    `llm_base_url` VARCHAR(500) COMMENT 'LLM API地址',
+    `llm_model` VARCHAR(100) COMMENT '默认模型',
     `last_active_at` DATETIME COMMENT '最后活跃时间',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -49,6 +53,8 @@ CREATE TABLE IF NOT EXISTS `agent_log` (
     `response_body` JSON COMMENT '完整响应体',
     `response_status` VARCHAR(20) NOT NULL COMMENT '响应状态: SUCCESS/FAILED/BLOCKED/PENDING_APPROVAL',
     `response_time_ms` INT COMMENT '响应时间(ms)',
+    `finish_reason` VARCHAR(50) COMMENT '完成原因：stop/length/content_filter/function_call',
+    `first_token_time_ms` INT COMMENT '首token响应时间（毫秒），仅流式请求',
     `token_input` INT COMMENT '输入token数',
     `token_output` INT COMMENT '输出token数',
     `model` VARCHAR(50) COMMENT 'LLM模型',
@@ -56,7 +62,8 @@ CREATE TABLE IF NOT EXISTS `agent_log` (
     `policy_snapshot` JSON COMMENT '策略快照（JSON格式，包含id/name/action/reason）',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY `idx_agent_id` (`agent_id`),
-    KEY `idx_created_at` (`created_at`)
+    KEY `idx_created_at` (`created_at`),
+    KEY `idx_finish_reason` (`finish_reason`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Agent日志表';
 
 -- =====================================================
@@ -152,6 +159,24 @@ CREATE TABLE IF NOT EXISTS `budget` (
     UNIQUE KEY `uk_month` (`month`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='预算配置表';
 
+-- LLM模型价格配置表
+CREATE TABLE IF NOT EXISTS `model_price` (
+    `id` VARCHAR(64) NOT NULL PRIMARY KEY COMMENT '主键ID',
+    `provider` VARCHAR(50) NOT NULL COMMENT 'LLM提供商：openai/anthropic/azure/etc',
+    `model_name` VARCHAR(100) NOT NULL COMMENT '模型名称：gpt-4/claude-3-opus/etc',
+    `input_price` DECIMAL(12, 8) NOT NULL COMMENT '输入价格（美元/百万Token）',
+    `output_price` DECIMAL(12, 8) NOT NULL COMMENT '输出价格（美元/百万Token）',
+    `currency` VARCHAR(10) DEFAULT 'USD' COMMENT '货币单位',
+    `effective_date` DATE COMMENT '生效日期',
+    `enabled` BOOLEAN DEFAULT TRUE COMMENT '是否启用',
+    `description` VARCHAR(500) COMMENT '价格说明',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
+    UNIQUE KEY `uk_provider_model` (`provider`, `model_name`),
+    KEY `idx_provider` (`provider`),
+    KEY `idx_enabled` (`enabled`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='LLM模型价格配置表';
+
 -- =====================================================
 -- 告警模块
 -- =====================================================
@@ -208,3 +233,23 @@ VALUES (
     NOW(),
     0
 );
+
+-- 初始化 OpenAI 模型价格（2024年1月数据）
+INSERT INTO `model_price` (`id`, `provider`, `model_name`, `input_price`, `output_price`, `description`, `created_at`, `updated_at`) VALUES
+('mp_001', 'openai', 'gpt-4-turbo', 10.00, 30.00, 'GPT-4 Turbo (128K context)', NOW(), NOW()),
+('mp_002', 'openai', 'gpt-4', 30.00, 60.00, 'GPT-4 (8K context)', NOW(), NOW()),
+('mp_003', 'openai', 'gpt-3.5-turbo', 0.50, 1.50, 'GPT-3.5 Turbo (16K context)', NOW(), NOW()),
+('mp_004', 'openai', 'gpt-4o', 5.00, 15.00, 'GPT-4o (128K context)', NOW(), NOW()),
+('mp_005', 'openai', 'gpt-4o-mini', 0.15, 0.60, 'GPT-4o Mini (128K context)', NOW(), NOW());
+
+-- 初始化 Anthropic 模型价格
+INSERT INTO `model_price` (`id`, `provider`, `model_name`, `input_price`, `output_price`, `description`, `created_at`, `updated_at`) VALUES
+('mp_101', 'anthropic', 'claude-3-opus-20240229', 15.00, 75.00, 'Claude 3 Opus', NOW(), NOW()),
+('mp_102', 'anthropic', 'claude-3-sonnet-20240229', 3.00, 15.00, 'Claude 3 Sonnet', NOW(), NOW()),
+('mp_103', 'anthropic', 'claude-3-haiku-20240307', 0.25, 1.25, 'Claude 3 Haiku', NOW(), NOW()),
+('mp_104', 'anthropic', 'claude-3-5-sonnet-20241022', 3.00, 15.00, 'Claude 3.5 Sonnet', NOW(), NOW());
+
+-- 初始化 Azure OpenAI 模型价格（价格可能因区域而异）
+INSERT INTO `model_price` (`id`, `provider`, `model_name`, `input_price`, `output_price`, `description`, `created_at`, `updated_at`) VALUES
+('mp_201', 'azure', 'gpt-4', 30.00, 60.00, 'Azure GPT-4', NOW(), NOW()),
+('mp_202', 'azure', 'gpt-35-turbo', 0.50, 1.50, 'Azure GPT-3.5 Turbo', NOW(), NOW());

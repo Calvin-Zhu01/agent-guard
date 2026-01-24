@@ -57,6 +57,12 @@ public class AgentLogDTO {
     @Schema(description = "响应时间（毫秒）")
     private Integer responseTimeMs;
 
+    @Schema(description = "完成原因：stop/length/content_filter/function_call")
+    private String finishReason;
+
+    @Schema(description = "首token响应时间（毫秒），仅流式请求")
+    private Integer firstTokenTimeMs;
+
     @Schema(description = "输入token数")
     private Integer tokenInput;
 

@@ -181,12 +181,12 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
                             .computeIfAbsent(agentId, k -> new ArrayList<>())
                             .add(policy);
                     } else {
-                        log.warn("Agent-scoped policy {} has no agentId, treating as global", policy.getId());
+                        log.warn("Agent级别策略 {} 没有agentId，视为全局策略", policy.getId());
                         newGlobalPolicies.add(policy);
                     }
                 } else {
                     // scope为null的情况，记录警告并视为全局策略
-                    log.warn("Policy {} has null scope, treating as global", policy.getId());
+                    log.warn("策略 {} 的scope为null，视为全局策略", policy.getId());
                     newGlobalPolicies.add(policy);
                 }
             }
@@ -195,11 +195,11 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
             this.globalPolicies = newGlobalPolicies;
             this.agentPoliciesMap = newAgentPoliciesMap;
             
-            log.info("Refreshed {} enabled policies: {} global, {} agent-specific", 
+            log.info("刷新了 {} 条启用的策略: {} 条全局策略, {} 条Agent级别策略", 
                     policies.size(), newGlobalPolicies.size(), 
                     newAgentPoliciesMap.values().stream().mapToInt(List::size).sum());
         } catch (Exception e) {
-            log.error("Failed to refresh policies", e);
+            log.error("刷新策略失败", e);
         }
     }
 
@@ -224,7 +224,7 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
             JSONObject conditions = JSONUtil.parseObj(policy.getConditions());
             return evaluateConditions(conditions, targetUrl, method, headers, body);
         } catch (Exception e) {
-            log.warn("Failed to parse policy conditions for policy {}: {}", policy.getId(), e.getMessage());
+            log.warn("解析策略 {} 的条件失败: {}", policy.getId(), e.getMessage());
             return false;
         }
     }
@@ -415,7 +415,7 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
             case "isnull" -> false; // actualValue is not null at this point
             case "isnotnull" -> true;
             default -> {
-                log.warn("Unknown operator: {}", operator);
+                log.warn("未知的操作符: {}", operator);
                 yield false;
             }
         };
@@ -490,7 +490,7 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
         try {
             return Pattern.compile(pattern).matcher(value).matches();
         } catch (PatternSyntaxException e) {
-            log.warn("Invalid regex pattern: {}", pattern);
+            log.warn("无效的正则表达式模式: {}", pattern);
             return false;
         }
     }
@@ -573,7 +573,7 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
     private PolicyResult createRateLimitResult(PolicyDTO policy, String targetUrl, Map<String, String> headers, 
                                                 Map<String, Object> body, String clientIp) {
         if (StrUtil.isBlank(policy.getConditions())) {
-            log.warn("Rate limit policy {} has no conditions", policy.getId());
+            log.warn("限流策略 {} 没有条件配置", policy.getId());
             return PolicyResult.allow();
         }
 
@@ -601,7 +601,7 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
             return PolicyResult.rateLimit(policy.getId(), policy.getName(), policy.getType(),
                     policy.getConditions(), rateLimitResult, reason);
         } catch (Exception e) {
-            log.error("Failed to evaluate rate limit policy {}: {}", policy.getId(), e.getMessage());
+            log.error("评估限流策略 {} 失败: {}", policy.getId(), e.getMessage());
             // 限流评估失败，降级为允许通过
             return PolicyResult.allow();
         }
@@ -647,12 +647,12 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
                     // 尝试解析为 PolicyAction 枚举
                     PolicyAction parsedAction = parseAction(conditionAction);
                     if (parsedAction != null) {
-                        log.debug("Using action from conditions: {} for policy {}", parsedAction, policy.getId());
+                        log.debug("使用条件中的action: {} (策略: {})", parsedAction, policy.getId());
                         return parsedAction;
                     }
                 }
             } catch (Exception e) {
-                log.warn("Failed to parse action from conditions for policy {}: {}", policy.getId(), e.getMessage());
+                log.warn("解析策略 {} 条件中的action失败: {}", policy.getId(), e.getMessage());
             }
         }
         // 回退到策略记录中的 action
@@ -672,7 +672,7 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
         try {
             return PolicyAction.valueOf(actionStr.toUpperCase());
         } catch (IllegalArgumentException e) {
-            log.warn("Invalid action value: {}", actionStr);
+            log.warn("无效的action值: {}", actionStr);
             return null;
         }
     }

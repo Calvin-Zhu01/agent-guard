@@ -21,4 +21,16 @@ public class AgentCreateDTO {
 
     @Schema(description = "描述信息", example = "用于处理客户咨询的智能助手")
     private String description;
+
+    @Schema(description = "LLM提供商：openai/anthropic/azure", example = "openai")
+    private String llmProvider;
+
+    @Schema(description = "真实的LLM API密钥", example = "sk-xxx")
+    private String llmApiKey;
+
+    @Schema(description = "LLM API地址", example = "https://api.openai.com/v1")
+    private String llmBaseUrl;
+
+    @Schema(description = "默认模型", example = "gpt-3.5-turbo")
+    private String llmModel;
 }

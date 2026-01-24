@@ -29,6 +29,7 @@ public enum ErrorCode {
     AGENT_NOT_FOUND(2001, "Agent不存在"),
     AGENT_NAME_DUPLICATE(2002, "Agent名称已存在"),
     AGENT_API_KEY_INVALID(2003, "Agent API Key无效"),
+    AGENT_LLM_CONFIG_INCOMPLETE(2004, "Agent LLM配置不完整"),
 
     // 代理请求转发模块 21xx
     INVALID_TARGET_URL(2101, "无效的目标URL"),

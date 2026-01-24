@@ -24,4 +24,12 @@ public interface AgentService {
     void delete(String id);
 
     AgentDTO getByApiKey(String apiKey);
+
+    /**
+     * 根据 API Key 获取 Agent 信息（用于代理服务，返回未脱敏的真实密钥）
+     *
+     * @param apiKey API密钥
+     * @return Agent信息（包含真实的LLM API Key）
+     */
+    AgentDTO getByApiKeyForProxy(String apiKey);
 }

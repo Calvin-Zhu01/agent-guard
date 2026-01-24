@@ -27,7 +27,11 @@ const editingAgentId = ref<string | null>(null)
 const activeTab = ref('basic')
 const formData = ref<AgentCreateDTO>({
   name: '',
-  description: ''
+  description: '',
+  llmProvider: 'openai',
+  llmApiKey: '',
+  llmBaseUrl: 'https://api.openai.com/v1',
+  llmModel: 'gpt-3.5-turbo'
 })
 
 // 策略绑定相关
@@ -104,7 +108,11 @@ async function fetchAllPolicies() {
 function resetForm() {
   formData.value = {
     name: '',
-    description: ''
+    description: '',
+    llmProvider: 'openai',
+    llmApiKey: '',
+    llmBaseUrl: 'https://api.openai.com/v1',
+    llmModel: 'gpt-3.5-turbo'
   }
   selectedPolicyIds.value = []
   activeTab.value = 'basic'
@@ -130,7 +138,11 @@ async function handleOpenEdit(agent: Agent) {
   editingAgentId.value = agent.id
   formData.value = {
     name: agent.name,
-    description: agent.description || ''
+    description: agent.description || '',
+    llmProvider: agent.llmProvider || 'openai',
+    llmApiKey: agent.llmApiKey || '',
+    llmBaseUrl: agent.llmBaseUrl || 'https://api.openai.com/v1',
+    llmModel: agent.llmModel || 'gpt-3.5-turbo'
   }
 
   // 立即打开对话框，提升响应速度
@@ -155,27 +167,31 @@ async function handleSubmit() {
       // 更新 Agent 基本信息
       const updateData: AgentUpdateDTO = {
         name: formData.value.name,
-        description: formData.value.description
+        description: formData.value.description,
+        llmProvider: formData.value.llmProvider,
+        llmApiKey: formData.value.llmApiKey,
+        llmBaseUrl: formData.value.llmBaseUrl,
+        llmModel: formData.value.llmModel
       }
       await agentApi.updateAgent(editingAgentId.value, updateData)
-      
+
       // 更新策略绑定
       await updatePolicyBindings(editingAgentId.value)
-      
+
       ElMessage.success('更新成功')
     } else {
       // 创建 Agent
       const newAgent = await agentApi.createAgent(formData.value)
-      
+
       // 绑定策略
       if (selectedPolicyIds.value.length > 0) {
         await Promise.all(
-          selectedPolicyIds.value.map(policyId => 
+          selectedPolicyIds.value.map(policyId =>
             agentApi.bindPolicy(newAgent.id, policyId)
           )
         )
       }
-      
+
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false
@@ -365,12 +381,42 @@ onMounted(() => {
     >
       <el-tabs v-model="activeTab">
         <el-tab-pane label="基本信息" name="basic">
-          <el-form :model="formData" label-width="100px" style="padding: 20px 0">
+          <el-form :model="formData" label-width="120px" style="padding: 20px 0">
             <el-form-item label="名称" required>
               <el-input v-model="formData.name" placeholder="请输入Agent名称" />
             </el-form-item>
             <el-form-item label="描述">
               <el-input v-model="formData.description" type="textarea" :rows="3" placeholder="请输入描述信息" />
+            </el-form-item>
+
+            <el-divider content-position="left">LLM 配置</el-divider>
+
+            <el-form-item label="LLM 提供商">
+              <el-select v-model="formData.llmProvider" placeholder="选择LLM提供商" style="width: 100%">
+                <el-option label="OpenAI" value="openai" />
+                <el-option label="Anthropic" value="anthropic" />
+                <el-option label="Azure OpenAI" value="azure" />
+              </el-select>
+            </el-form-item>
+
+            <el-form-item label="LLM API Key">
+              <el-input
+                v-model="formData.llmApiKey"
+                type="password"
+                placeholder="请输入LLM API密钥（如 sk-xxx）"
+                show-password
+              />
+            </el-form-item>
+
+            <el-form-item label="LLM Base URL">
+              <el-input v-model="formData.llmBaseUrl" placeholder="LLM API地址" />
+              <div style="margin-top: 4px; font-size: 12px; color: var(--el-text-color-secondary)">
+                默认值：OpenAI: https://api.openai.com/v1
+              </div>
+            </el-form-item>
+
+            <el-form-item label="默认模型">
+              <el-input v-model="formData.llmModel" placeholder="默认模型名称（如 gpt-3.5-turbo）" />
             </el-form-item>
           </el-form>
         </el-tab-pane>

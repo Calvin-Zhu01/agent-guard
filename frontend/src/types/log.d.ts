@@ -41,6 +41,8 @@ export interface AgentLog {
   responseBody: string
   responseStatus: ResponseStatus
   responseTimeMs: number
+  finishReason: string
+  firstTokenTimeMs: number
   tokenInput: number
   tokenOutput: number
   model: string
@@ -55,4 +57,5 @@ export interface AgentLogListParams {
   size: number
   agentId?: string
   responseStatus?: ResponseStatus
+  requestType?: RequestType
 }
