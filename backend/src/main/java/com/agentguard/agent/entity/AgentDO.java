@@ -1,8 +1,5 @@
 package com.agentguard.agent.entity;
 
-import com.agentguard.agent.enums.AgentEnvironment;
-import com.agentguard.agent.enums.AgentStatus;
-import com.agentguard.agent.enums.AgentType;
 import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
 
@@ -24,23 +21,11 @@ public class AgentDO {
     /** Agent名称 */
     private String name;
 
-    /** Agent类型 */
-    private AgentType type;
-
-    /** 所属部门 */
-    private String department;
-
-    /** 运行环境 */
-    private AgentEnvironment environment;
-
     /** API密钥 */
     private String apiKey;
 
     /** 描述信息 */
     private String description;
-
-    /** 状态 */
-    private AgentStatus status;
 
     /** 最后活跃时间 */
     private LocalDateTime lastActiveAt;

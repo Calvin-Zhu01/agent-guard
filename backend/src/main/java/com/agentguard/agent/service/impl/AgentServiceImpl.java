@@ -9,17 +9,22 @@ import com.agentguard.agent.dto.AgentCreateDTO;
 import com.agentguard.agent.dto.AgentDTO;
 import com.agentguard.agent.dto.AgentUpdateDTO;
 import com.agentguard.agent.entity.AgentDO;
-import com.agentguard.agent.enums.AgentStatus;
 import com.agentguard.agent.mapper.AgentMapper;
+import com.agentguard.agent.mapper.AgentPolicyBindingMapper;
 import com.agentguard.agent.service.AgentService;
 import com.agentguard.common.exception.BusinessException;
 import com.agentguard.common.exception.ErrorCode;
+import com.agentguard.policy.entity.PolicyDO;
+import com.agentguard.policy.mapper.PolicyMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Agent 服务实现类
@@ -33,15 +38,16 @@ public class AgentServiceImpl implements AgentService {
     private static final String API_KEY_PREFIX = "ag_";
 
     private final AgentMapper agentMapper;
+    private final AgentPolicyBindingMapper bindingMapper;
+    private final PolicyMapper policyMapper;
 
     @Override
     @Transactional
     public AgentDTO create(AgentCreateDTO dto) {
         AgentDO agentDO = BeanUtil.copyProperties(dto, AgentDO.class);
         agentDO.setApiKey(generateApiKey());
-        agentDO.setStatus(AgentStatus.ENABLED);
         agentMapper.insert(agentDO);
-        return BeanUtil.copyProperties(agentDO, AgentDTO.class);
+        return toDTO(agentDO);
     }
 
     @Override
@@ -50,7 +56,7 @@ public class AgentServiceImpl implements AgentService {
         if (ObjectUtil.isNull(agentDO)) {
             throw new BusinessException(ErrorCode.AGENT_NOT_FOUND);
         }
-        return BeanUtil.copyProperties(agentDO, AgentDTO.class);
+        return toDTO(agentDO);
     }
 
     @Override
@@ -65,7 +71,7 @@ public class AgentServiceImpl implements AgentService {
         Page<AgentDO> entityPage = new Page<>(page.getCurrent(), page.getSize());
         Page<AgentDO> result = agentMapper.selectPage(entityPage, wrapper);
 
-        return result.convert(entity -> BeanUtil.copyProperties(entity, AgentDTO.class));
+        return result.convert(this::toDTO);
     }
 
     @Override
@@ -82,7 +88,7 @@ public class AgentServiceImpl implements AgentService {
         agentDO.setUpdatedAt(java.time.LocalDateTime.now());
 
         agentMapper.updateById(agentDO);
-        return BeanUtil.copyProperties(agentDO, AgentDTO.class);
+        return toDTO(agentDO);
     }
 
     @Override
@@ -101,7 +107,32 @@ public class AgentServiceImpl implements AgentService {
         if (ObjectUtil.isNull(agentDO)) {
             return null;
         }
-        return BeanUtil.copyProperties(agentDO, AgentDTO.class);
+        return toDTO(agentDO);
+    }
+
+    /**
+     * 转换为 DTO，包含策略信息
+     */
+    private AgentDTO toDTO(AgentDO agentDO) {
+        AgentDTO dto = BeanUtil.copyProperties(agentDO, AgentDTO.class);
+        
+        // 查询绑定的策略
+        List<String> policyIds = bindingMapper.selectPolicyIdsByAgentId(agentDO.getId());
+        if (!policyIds.isEmpty()) {
+            List<PolicyDO> policies = policyMapper.selectBatchIds(policyIds);
+            List<AgentDTO.PolicySummaryDTO> policySummaries = policies.stream()
+                    .map(policy -> {
+                        AgentDTO.PolicySummaryDTO summary = new AgentDTO.PolicySummaryDTO();
+                        summary.setId(policy.getId());
+                        summary.setName(policy.getName());
+                        summary.setEnabled(policy.getEnabled());
+                        return summary;
+                    })
+                    .collect(Collectors.toList());
+            dto.setPolicies(policySummaries);
+        }
+        
+        return dto;
     }
 
     private String generateApiKey() {

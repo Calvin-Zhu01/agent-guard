@@ -1,37 +1,28 @@
 export interface Agent {
   id: string
-  tenantId: string
   name: string
-  type: AgentType
-  department: string
-  environment: Environment
   apiKey: string
-  description: string
-  status: number
-  lastActiveAt: string
+  description?: string
+  lastActiveAt?: string
   createdAt: string
   updatedAt: string
+  policies?: PolicySummary[]
 }
 
-export type AgentType = 'CUSTOMER_SERVICE' | 'FINANCE' | 'OPERATION' | 'INTERNAL' | 'OTHER'
-
-export type Environment = 'TEST' | 'PRODUCTION'
+export interface PolicySummary {
+  id: string
+  name: string
+  enabled: boolean
+}
 
 export interface AgentCreateDTO {
   name: string
-  type: AgentType
-  department?: string
-  environment?: Environment
   description?: string
 }
 
 export interface AgentUpdateDTO {
   name?: string
-  type?: AgentType
-  department?: string
-  environment?: Environment
   description?: string
-  status?: number
 }
 
 export interface AgentListParams {

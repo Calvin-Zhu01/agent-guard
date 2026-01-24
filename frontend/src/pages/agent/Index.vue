@@ -6,6 +6,7 @@
  */
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { View, Hide, CopyDocument } from '@element-plus/icons-vue'
 import * as agentApi from '@/api/agent'
 import * as policyApi from '@/api/policy'
 import type { Agent, AgentCreateDTO, AgentUpdateDTO } from '@/types/agent'
@@ -23,33 +24,60 @@ const queryParams = ref({
 const dialogVisible = ref(false)
 const isEditMode = ref(false)
 const editingAgentId = ref<string | null>(null)
+const activeTab = ref('basic')
 const formData = ref<AgentCreateDTO>({
   name: '',
-  type: 'OTHER',
-  department: '',
-  environment: 'TEST',
   description: ''
 })
 
 // 策略绑定相关
-const policyDialogVisible = ref(false)
-const currentAgent = ref<Agent | null>(null)
-const boundPolicies = ref<Policy[]>([])
 const allPolicies = ref<Policy[]>([])
-const policyLoading = ref(false)
-const selectedPolicyId = ref('')
+const selectedPolicyIds = ref<string[]>([])
 
-const agentTypes = [
-  { label: '客服', value: 'CUSTOMER_SERVICE' },
-  { label: '财务', value: 'FINANCE' },
-  { label: '运营', value: 'OPERATION' },
-  { label: '内部工具', value: 'INTERNAL' },
-  { label: '其他', value: 'OTHER' }
-]
+// 密钥可见性状态管理
+const visibleKeys = ref<Set<string>>(new Set())
 
-function getAgentTypeText(type: string): string {
-  const found = agentTypes.find(t => t.value === type)
-  return found ? found.label : type
+/**
+ * 脱敏显示 API Key
+ */
+function maskApiKey(apiKey: string): string {
+  if (!apiKey || apiKey.length < 10) return apiKey
+  const prefixLength = 7
+  const suffixLength = 4
+  const prefix = apiKey.substring(0, prefixLength)
+  const suffix = apiKey.substring(apiKey.length - suffixLength)
+  const masked = '*'.repeat(16)
+  return `${prefix}${masked}${suffix}`
+}
+
+/**
+ * 切换密钥可见性
+ */
+function toggleKeyVisibility(agentId: string) {
+  if (visibleKeys.value.has(agentId)) {
+    visibleKeys.value.delete(agentId)
+  } else {
+    visibleKeys.value.add(agentId)
+  }
+}
+
+/**
+ * 判断密钥是否可见
+ */
+function isKeyVisible(agentId: string): boolean {
+  return visibleKeys.value.has(agentId)
+}
+
+/**
+ * 复制密钥到剪贴板
+ */
+async function copyApiKey(apiKey: string) {
+  try {
+    await navigator.clipboard.writeText(apiKey)
+    ElMessage.success('密钥已复制到剪贴板')
+  } catch (e) {
+    ElMessage.error('复制失败，请手动复制')
+  }
 }
 
 async function fetchData() {
@@ -63,21 +91,38 @@ async function fetchData() {
   }
 }
 
+async function fetchAllPolicies() {
+  try {
+    // 只获取 Agent 级策略
+    const res = await policyApi.getPolicyList({ current: 1, size: 100, scope: 'AGENT' })
+    allPolicies.value = res.records
+  } catch (e) {
+    // error handled by interceptor
+  }
+}
+
 function resetForm() {
   formData.value = {
     name: '',
-    type: 'OTHER',
-    department: '',
-    environment: 'TEST',
     description: ''
   }
+  selectedPolicyIds.value = []
+  activeTab.value = 'basic'
   isEditMode.value = false
   editingAgentId.value = null
 }
 
-function handleOpenCreate() {
+async function handleOpenCreate() {
   resetForm()
+  // 立即打开对话框，提升响应速度
   dialogVisible.value = true
+  // 异步加载策略列表
+  loading.value = true
+  try {
+    await fetchAllPolicies()
+  } finally {
+    loading.value = false
+  }
 }
 
 async function handleOpenEdit(agent: Agent) {
@@ -85,28 +130,52 @@ async function handleOpenEdit(agent: Agent) {
   editingAgentId.value = agent.id
   formData.value = {
     name: agent.name,
-    type: agent.type,
-    department: agent.department || '',
-    environment: agent.environment || 'TEST',
     description: agent.description || ''
   }
+
+  // 立即打开对话框，提升响应速度
   dialogVisible.value = true
+
+  // 并行加载策略数据
+  loading.value = true
+  try {
+    const [_, boundPolicies] = await Promise.all([
+      fetchAllPolicies(),
+      agentApi.getAgentPolicies(agent.id)
+    ])
+    selectedPolicyIds.value = boundPolicies.map(p => p.id)
+  } finally {
+    loading.value = false
+  }
 }
 
 async function handleSubmit() {
   try {
     if (isEditMode.value && editingAgentId.value) {
+      // 更新 Agent 基本信息
       const updateData: AgentUpdateDTO = {
         name: formData.value.name,
-        type: formData.value.type,
-        department: formData.value.department,
-        environment: formData.value.environment,
         description: formData.value.description
       }
       await agentApi.updateAgent(editingAgentId.value, updateData)
+      
+      // 更新策略绑定
+      await updatePolicyBindings(editingAgentId.value)
+      
       ElMessage.success('更新成功')
     } else {
-      await agentApi.createAgent(formData.value)
+      // 创建 Agent
+      const newAgent = await agentApi.createAgent(formData.value)
+      
+      // 绑定策略
+      if (selectedPolicyIds.value.length > 0) {
+        await Promise.all(
+          selectedPolicyIds.value.map(policyId => 
+            agentApi.bindPolicy(newAgent.id, policyId)
+          )
+        )
+      }
+      
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false
@@ -115,6 +184,25 @@ async function handleSubmit() {
   } catch (e) {
     // error handled by interceptor
   }
+}
+
+/**
+ * 更新策略绑定（对比差异，只调用需要的接口）
+ */
+async function updatePolicyBindings(agentId: string) {
+  const currentPolicies = await agentApi.getAgentPolicies(agentId)
+  const currentPolicyIds = new Set(currentPolicies.map(p => p.id))
+  const newPolicyIds = new Set(selectedPolicyIds.value)
+  
+  // 需要解绑的策略
+  const toUnbind = [...currentPolicyIds].filter(id => !newPolicyIds.has(id))
+  // 需要绑定的策略
+  const toBind = [...newPolicyIds].filter(id => !currentPolicyIds.has(id))
+  
+  await Promise.all([
+    ...toUnbind.map(policyId => agentApi.unbindPolicy(agentId, policyId)),
+    ...toBind.map(policyId => agentApi.bindPolicy(agentId, policyId))
+  ])
 }
 
 async function handleDelete(id: string) {
@@ -144,68 +232,6 @@ function handlePageChange(page: number) {
 
 function handleDialogClose() {
   resetForm()
-}
-
-// ==================== 策略绑定相关 ====================
-
-async function handleOpenPolicyDialog(agent: Agent) {
-  currentAgent.value = agent
-  policyDialogVisible.value = true
-  selectedPolicyId.value = ''
-  await Promise.all([fetchBoundPolicies(agent.id), fetchAllPolicies()])
-}
-
-async function fetchBoundPolicies(agentId: string) {
-  policyLoading.value = true
-  try {
-    boundPolicies.value = await agentApi.getAgentPolicies(agentId)
-  } finally {
-    policyLoading.value = false
-  }
-}
-
-async function fetchAllPolicies() {
-  try {
-    // 只获取 Agent 级策略（scope = 'AGENT'），全局策略自动生效无需绑定
-    const res = await policyApi.getPolicyList({ current: 1, size: 100, scope: 'AGENT' })
-    allPolicies.value = res.records
-  } catch (e) {
-    // error handled by interceptor
-  }
-}
-
-/** 获取可绑定的策略（排除已绑定的） */
-function getAvailablePolicies() {
-  const boundIds = new Set(boundPolicies.value.map(p => p.id))
-  return allPolicies.value.filter(p => !boundIds.has(p.id))
-}
-
-async function handleBindPolicy() {
-  if (!selectedPolicyId.value || !currentAgent.value) return
-  try {
-    await agentApi.bindPolicy(currentAgent.value.id, selectedPolicyId.value)
-    ElMessage.success('绑定成功')
-    selectedPolicyId.value = ''
-    await fetchBoundPolicies(currentAgent.value.id)
-  } catch (e) {
-    // error handled by interceptor
-  }
-}
-
-async function handleUnbindPolicy(policyId: string) {
-  if (!currentAgent.value) return
-  try {
-    await ElMessageBox.confirm('确定要解绑该策略吗？', '解绑确认', {
-      type: 'warning',
-      confirmButtonText: '确定',
-      cancelButtonText: '取消'
-    })
-    await agentApi.unbindPolicy(currentAgent.value.id, policyId)
-    ElMessage.success('解绑成功')
-    await fetchBoundPolicies(currentAgent.value.id)
-  } catch (e) {
-    // user cancelled or error handled by interceptor
-  }
 }
 
 const policyTypeMap: Record<string, { label: string; type: 'primary' | 'success' | 'warning' | 'info' | 'danger' }> = {
@@ -247,31 +273,73 @@ onMounted(() => {
       </el-form>
 
       <el-table :data="agents" v-loading="loading" stripe>
-        <el-table-column prop="name" label="名称" />
-        <el-table-column prop="type" label="类型" width="120">
+        <el-table-column prop="name" label="名称" width="200" />
+        <el-table-column label="密钥" width="280">
           <template #default="{ row }">
-            {{ getAgentTypeText(row.type) }}
+            <div class="api-key-cell">
+              <span class="api-key-text">
+                {{ isKeyVisible(row.id) ? row.apiKey : maskApiKey(row.apiKey) }}
+              </span>
+              <div class="api-key-actions">
+                <el-icon
+                  class="action-icon"
+                  @click="toggleKeyVisibility(row.id)"
+                  :title="isKeyVisible(row.id) ? '隐藏密钥' : '显示密钥'"
+                >
+                  <View v-if="!isKeyVisible(row.id)" />
+                  <Hide v-else />
+                </el-icon>
+                <el-icon
+                  class="action-icon"
+                  @click="copyApiKey(row.apiKey)"
+                  title="复制密钥"
+                >
+                  <CopyDocument />
+                </el-icon>
+              </div>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column prop="department" label="部门" width="120" />
-        <el-table-column prop="environment" label="环境" width="100">
+        <el-table-column label="绑定策略" width="120">
           <template #default="{ row }">
-            <el-tag :type="row.environment === 'PRODUCTION' ? 'danger' : 'info'">
-              {{ row.environment === 'PRODUCTION' ? '生产' : '测试' }}
-            </el-tag>
+            <el-popover
+              v-if="row.policies && row.policies.length > 0"
+              placement="top"
+              :width="300"
+              trigger="hover"
+            >
+              <template #reference>
+                <el-tag type="primary" style="cursor: pointer">
+                  {{ row.policies.length }} 个策略
+                </el-tag>
+              </template>
+              <div class="policy-popover">
+                <div class="policy-popover-title">绑定的策略</div>
+                <div
+                  v-for="policy in row.policies"
+                  :key="policy.id"
+                  class="policy-popover-item"
+                >
+                  <span :class="{ 'policy-disabled': !policy.enabled }">
+                    {{ policy.name }}
+                  </span>
+                  <el-tag
+                    :type="policy.enabled ? 'success' : 'info'"
+                    size="small"
+                    style="margin-left: 8px"
+                  >
+                    {{ policy.enabled ? '已启用' : '未启用' }}
+                  </el-tag>
+                </div>
+              </div>
+            </el-popover>
+            <span v-else style="color: var(--el-text-color-secondary)">未绑定</span>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="状态" width="80">
-          <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : 'info'">
-              {{ row.status === 1 ? '活跃' : '停用' }}
-            </el-tag>
-          </template>
-        </el-table-column>
+        <el-table-column prop="description" label="描述" show-overflow-tooltip />
         <el-table-column prop="createdAt" label="创建时间" width="180" />
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="handleOpenPolicyDialog(row)">策略</el-button>
             <el-button link type="primary" @click="handleOpenEdit(row)">编辑</el-button>
             <el-button link type="danger" @click="handleDelete(row.id)">删除</el-button>
           </template>
@@ -292,111 +360,59 @@ onMounted(() => {
     <el-dialog
       v-model="dialogVisible"
       :title="isEditMode ? '编辑 Agent' : '新建 Agent'"
-      width="500px"
+      width="600px"
       @close="handleDialogClose"
     >
-      <el-form :model="formData" label-width="80px">
-        <el-form-item label="名称" required>
-          <el-input v-model="formData.name" placeholder="请输入Agent名称" />
-        </el-form-item>
-        <el-form-item label="类型" required>
-          <el-select v-model="formData.type" style="width: 100%">
-            <el-option v-for="t in agentTypes" :key="t.value" :label="t.label" :value="t.value" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="部门">
-          <el-input v-model="formData.department" placeholder="请输入所属部门" />
-        </el-form-item>
-        <el-form-item label="环境">
-          <el-radio-group v-model="formData.environment">
-            <el-radio value="TEST">测试</el-radio>
-            <el-radio value="PRODUCTION">生产</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="描述">
-          <el-input v-model="formData.description" type="textarea" :rows="3" />
-        </el-form-item>
-      </el-form>
+      <el-tabs v-model="activeTab">
+        <el-tab-pane label="基本信息" name="basic">
+          <el-form :model="formData" label-width="100px" style="padding: 20px 0">
+            <el-form-item label="名称" required>
+              <el-input v-model="formData.name" placeholder="请输入Agent名称" />
+            </el-form-item>
+            <el-form-item label="描述">
+              <el-input v-model="formData.description" type="textarea" :rows="3" placeholder="请输入描述信息" />
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
+
+        <el-tab-pane label="策略绑定" name="policy">
+          <el-form label-width="100px" style="padding: 20px 0" v-loading="loading">
+            <el-form-item label="绑定策略">
+              <el-select
+                v-model="selectedPolicyIds"
+                multiple
+                placeholder="选择要绑定的 Agent 级策略"
+                style="width: 100%"
+                filterable
+                collapse-tags
+                collapse-tags-tooltip
+                :disabled="loading"
+              >
+                <el-option
+                  v-for="policy in allPolicies"
+                  :key="policy.id"
+                  :label="policy.name"
+                  :value="policy.id"
+                >
+                  <div style="display: flex; align-items: center; justify-content: space-between">
+                    <span>{{ policy.name }}</span>
+                    <el-tag :type="getPolicyTypeTagType(policy.type)" size="small">
+                      {{ getPolicyTypeLabel(policy.type) }}
+                    </el-tag>
+                  </div>
+                </el-option>
+              </el-select>
+              <div style="margin-top: 8px; font-size: 12px; color: var(--el-text-color-secondary)">
+                全局策略自动对所有 Agent 生效，无需手动绑定
+              </div>
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
+      </el-tabs>
+
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" @click="handleSubmit">{{ isEditMode ? '保存' : '确定' }}</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 策略绑定弹窗 -->
-    <el-dialog
-      v-model="policyDialogVisible"
-      :title="`管理策略 - ${currentAgent?.name || ''}`"
-      width="650px"
-    >
-      <el-alert
-        type="info"
-        :closable="false"
-        show-icon
-        style="margin-bottom: 16px"
-      >
-        <template #title>
-          <span>全局策略自动对所有 Agent 生效，无需手动绑定。此处仅管理 Agent 级策略的绑定关系。</span>
-        </template>
-      </el-alert>
-
-      <div class="policy-bind-section">
-        <div class="bind-form">
-          <el-select
-            v-model="selectedPolicyId"
-            placeholder="选择要绑定的 Agent 级策略"
-            style="width: 350px"
-            filterable
-            :no-data-text="'暂无可绑定的 Agent 级策略'"
-          >
-            <el-option
-              v-for="policy in getAvailablePolicies()"
-              :key="policy.id"
-              :label="policy.name"
-              :value="policy.id"
-            >
-              <span>{{ policy.name }}</span>
-              <el-tag :type="getPolicyTypeTagType(policy.type)" size="small" style="margin-left: 8px">
-                {{ getPolicyTypeLabel(policy.type) }}
-              </el-tag>
-            </el-option>
-          </el-select>
-          <el-button
-            type="primary"
-            :disabled="!selectedPolicyId"
-            @click="handleBindPolicy"
-            style="margin-left: 12px"
-          >
-            绑定
-          </el-button>
-        </div>
-      </div>
-
-      <el-divider content-position="left">已绑定的 Agent 级策略</el-divider>
-
-      <el-table :data="boundPolicies" v-loading="policyLoading" stripe max-height="300">
-        <el-table-column prop="name" label="策略名称" />
-        <el-table-column prop="type" label="类型" width="120">
-          <template #default="{ row }">
-            <el-tag :type="getPolicyTypeTagType(row.type)" size="small">
-              {{ getPolicyTypeLabel(row.type) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="action" label="动作" width="100" />
-        <el-table-column label="操作" width="80" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="danger" @click="handleUnbindPolicy(row.id)">解绑</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <template v-if="boundPolicies.length === 0 && !policyLoading">
-        <el-empty description="暂无绑定的 Agent 级策略" :image-size="60" />
-      </template>
-
-      <template #footer>
-        <el-button @click="policyDialogVisible = false">关闭</el-button>
       </template>
     </el-dialog>
   </div>
@@ -409,12 +425,72 @@ onMounted(() => {
   align-items: center;
 }
 
-.policy-bind-section {
-  margin-bottom: 16px;
-}
-
-.bind-form {
+.api-key-cell {
   display: flex;
   align-items: center;
+  gap: 8px;
+  padding: 2px 6px;
+  background-color: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color);
+  border-radius: 12px;
+}
+
+.api-key-text {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  color: var(--el-text-color-regular);
+  scrollbar-width: none;
+}
+
+.api-key-text::-webkit-scrollbar {
+  display: none;
+}
+
+.api-key-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.action-icon {
+  cursor: pointer;
+  color: var(--el-text-color-secondary);
+  font-size: 16px;
+  transition: color 0.3s;
+}
+
+.action-icon:hover {
+  color: var(--el-color-primary);
+}
+
+.policy-popover {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.policy-popover-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.policy-popover-item {
+  padding: 6px 0;
+  color: var(--el-text-color-regular);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.policy-popover-item:not(:last-child) {
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.policy-disabled {
+  color: var(--el-text-color-secondary);
+  text-decoration: line-through;
 }
 </style>

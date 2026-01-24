@@ -685,16 +685,46 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
      * @return 原因描述
      */
     private String buildReason(PolicyDTO policy, PolicyAction action) {
+        StringBuilder reason = new StringBuilder();
+        reason.append("【AgentGuard 平台拦截】");
+        
+        // 添加策略名称
+        reason.append("策略名称：").append(policy.getName()).append("。");
+        
+        // 添加拦截类型说明
         String actionDesc = switch (action) {
-            case DENY -> "请求被拒绝";
-            case APPROVAL -> "需要审批";
-            case RATE_LIMIT -> "请求被限流";
-            default -> "策略拦截";
+            case DENY -> "拒绝原因：该操作已被明确禁止";
+            case APPROVAL -> "拦截原因：该操作属于高风险操作，需要人工审批后才能执行";
+            case RATE_LIMIT -> "限流原因：该操作已超过频率限制，请稍后重试";
+            default -> "拦截原因：触发了策略规则";
         };
-
+        reason.append(actionDesc).append("。");
+        
+        // 添加策略描述（如果有）
         if (StrUtil.isNotBlank(policy.getDescription())) {
-            return actionDesc + "：" + policy.getDescription();
+            reason.append("详细说明：").append(policy.getDescription()).append("。");
         }
-        return actionDesc + "：" + policy.getName();
+        
+        // 添加策略类型信息
+        if (ObjectUtil.isNotNull(policy.getType())) {
+            String typeDesc = switch (policy.getType()) {
+                case ACCESS_CONTROL -> "这是一条访问控制策略";
+                case RATE_LIMIT -> "这是一条频率限制策略";
+                case APPROVAL -> "这是一条审批策略";
+                default -> "策略类型：" + policy.getType();
+            };
+            reason.append(typeDesc).append("。");
+        }
+        
+        // 添加建议
+        String suggestion = switch (action) {
+            case DENY -> "建议：请联系管理员确认是否需要调整策略权限";
+            case APPROVAL -> "建议：请前往审批中心提交审批申请，或联系管理员处理";
+            case RATE_LIMIT -> "建议：请等待一段时间后重试，或联系管理员调整频率限制";
+            default -> "建议：请联系管理员了解详情";
+        };
+        reason.append(suggestion).append("。");
+        
+        return reason.toString();
     }
 }

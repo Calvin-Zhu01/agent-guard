@@ -8,12 +8,15 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
+import { useTagsStore } from '@/stores/tags'
 import { logout as logoutApi } from '@/api/auth'
 import { countAlertHistory } from '@/api/alert'
+import TagsBar from '@/components/TagsBar.vue'
 
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
+const tagsStore = useTagsStore()
 
 const isCollapse = ref(false)
 const loggingOut = ref(false)
@@ -117,10 +120,18 @@ async function handleLogout() {
 }
 
 onMounted(() => {
+  // 初始化当前路由标签
+  tagsStore.addTag(route)
+
   // 初始获取告警数量
   fetchAlertBadgeCount()
   // 每分钟轮询一次
   alertPollingTimer = setInterval(fetchAlertBadgeCount, 60000)
+})
+
+// 监听路由变化，添加标签
+router.afterEach((to) => {
+  tagsStore.addTag(to)
 })
 
 onUnmounted(() => {
@@ -203,6 +214,9 @@ onUnmounted(() => {
           </el-dropdown>
         </div>
       </el-header>
+
+      <!-- 标签栏 -->
+      <TagsBar />
 
       <el-main class="main">
         <router-view />
