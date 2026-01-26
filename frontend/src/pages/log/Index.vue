@@ -32,11 +32,6 @@ const responseStatusOptions = [
   { label: '待审批', value: 'PENDING_APPROVAL' }
 ]
 
-const requestTypeLabels: Record<string, string> = {
-  API_CALL: 'API调用',
-  LLM_CALL: 'LLM调用'
-}
-
 const policyActionLabels: Record<PolicyAction, string> = {
   ALLOW: '允许',
   DENY: '拒绝',
@@ -223,14 +218,69 @@ function formatDateTime(dateStr: string): string {
   return dateStr.replace('T', ' ').substring(0, 19)
 }
 
+/**
+ * 获取完成原因的显示文本
+ */
+function getFinishReasonLabel(finishReason: string | null | undefined): string {
+  if (!finishReason) return '-'
+
+  const labels: Record<string, string> = {
+    'stop': '正常完成',
+    'length': '达到长度限制',
+    'tool_calls': '调用工具',
+    'function_call': '调用函数',
+    'content_filter': '内容过滤'
+  }
+
+  return labels[finishReason] || finishReason
+}
+
+/**
+ * 获取完成原因的标签类型
+ */
+function getFinishReasonType(finishReason: string | null | undefined): 'success' | 'warning' | 'danger' | 'info' {
+  if (!finishReason) return 'info'
+
+  switch (finishReason) {
+    case 'stop':
+      return 'success'  // 正常完成 - 绿色
+    case 'length':
+      return 'warning'  // 达到长度限制 - 黄色
+    case 'tool_calls':
+    case 'function_call':
+      return 'info'     // 调用工具/函数 - 蓝色
+    case 'content_filter':
+      return 'danger'   // 内容过滤 - 红色
+    default:
+      return 'info'
+  }
+}
+
+/**
+ * 获取完成原因的详细说明（用于tooltip）
+ */
+function getFinishReasonTooltip(finishReason: string | null | undefined): string {
+  if (!finishReason) return ''
+
+  const tooltips: Record<string, string> = {
+    'stop': '正常完成响应',
+    'length': '响应达到了 max_tokens 参数设置的限制而被截断',
+    'tool_calls': '模型决定需要调用外部工具（function calling）来完成任务',
+    'function_call': '模型决定需要调用外部工具（function calling）来完成任务',
+    'content_filter': '响应因违反内容政策而被安全过滤器拦截'
+  }
+
+  return tooltips[finishReason] || `未知的完成原因: ${finishReason}`
+}
+
 // 根据响应时间获取颜色类型（总用时）
-function getResponseTimeType(timeMs: number): 'success' | 'warning' | 'danger' | '' {
+function getResponseTimeType(timeMs: number): 'success' | 'danger' {
   if (timeMs < 60000) return 'success'  // < 60s 绿色
   return 'danger'  // >= 60s 红色
 }
 
 // 根据首token时间获取颜色类型
-function getFirstTokenTimeType(timeMs: number): 'success' | 'warning' | 'danger' | '' {
+function getFirstTokenTimeType(timeMs: number): 'success' | 'warning' | 'danger' {
   if (timeMs < 3000) return 'success'  // < 3s 绿色
   if (timeMs < 10000) return 'warning'  // 3-10s 黄色
   return 'danger'  // > 10s 红色
@@ -340,11 +390,13 @@ watch(activeTab, () => {
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="完成原因" width="110">
+            <el-table-column label="完成原因" width="120">
               <template #default="{ row }">
-                <el-tag v-if="row.finishReason" :type="row.finishReason === 'stop' ? 'success' : 'warning'" effect="plain" size="small">
-                  {{ row.finishReason }}
-                </el-tag>
+                <el-tooltip v-if="row.finishReason" :content="getFinishReasonTooltip(row.finishReason)" placement="top">
+                  <el-tag :type="getFinishReasonType(row.finishReason)" effect="plain" size="small">
+                    {{ getFinishReasonLabel(row.finishReason) }}
+                  </el-tag>
+                </el-tooltip>
                 <span v-else class="text-muted">-</span>
               </template>
             </el-table-column>
@@ -435,7 +487,14 @@ watch(activeTab, () => {
             <el-descriptions-item v-if="currentLog.requestType === 'LLM_CALL'" label="输入Token">{{ currentLog.tokenInput || '-' }}</el-descriptions-item>
             <el-descriptions-item v-if="currentLog.requestType === 'LLM_CALL'" label="输出Token">{{ currentLog.tokenOutput || '-' }}</el-descriptions-item>
             <el-descriptions-item v-if="currentLog.requestType === 'LLM_CALL'" label="成本">{{ formatCost(currentLog.cost) }}</el-descriptions-item>
-            <el-descriptions-item v-if="currentLog.requestType === 'LLM_CALL'" label="完成原因">{{ currentLog.finishReason || '-' }}</el-descriptions-item>
+            <el-descriptions-item v-if="currentLog.requestType === 'LLM_CALL'" label="完成原因">
+              <el-tooltip v-if="currentLog.finishReason" :content="getFinishReasonTooltip(currentLog.finishReason)" placement="top">
+                <el-tag :type="getFinishReasonType(currentLog.finishReason)" effect="plain" size="small">
+                  {{ getFinishReasonLabel(currentLog.finishReason) }}
+                </el-tag>
+              </el-tooltip>
+              <span v-else class="text-muted">-</span>
+            </el-descriptions-item>
           </el-descriptions>
         </div>
 

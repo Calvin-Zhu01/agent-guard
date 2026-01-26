@@ -194,6 +194,7 @@ public class ProxyServiceImpl implements ProxyService {
 
         // 用于收集流式响应中的 token 统计信息
         final StringBuilder lastChunkBuilder = new StringBuilder();
+        final StringBuilder finishReasonChunkBuilder = new StringBuilder(); // 用于保存包含finish_reason的chunk
         final String logId = java.util.UUID.randomUUID().toString();
         final long[] firstTokenTime = {0L}; // 记录首token时间
         final String[] finishReason = {null}; // 记录完成原因
@@ -230,7 +231,7 @@ public class ProxyServiceImpl implements ProxyService {
                                 emitter.send(SseEmitter.event().data(chunk));
 
                                 // 检查 chunk 是否包含 finish_reason（在 choices 数组中）
-                                if (chunk.contains("\"finish_reason\"") && finishReason[0] == null) {
+                                if (chunk.contains("\"finish_reason\"")) {
                                     try {
                                         // 去掉 "data: " 前缀（如果有）
                                         String jsonStr = chunk;
@@ -247,8 +248,12 @@ public class ProxyServiceImpl implements ProxyService {
                                                     Map<String, Object> firstChoice = (Map<String, Object>) choices.get(0);
                                                     if (firstChoice.containsKey("finish_reason")) {
                                                         Object finishReasonObj = firstChoice.get("finish_reason");
+                                                        // 只有当finish_reason不是null时才记录
                                                         if (finishReasonObj != null && !"null".equals(finishReasonObj.toString())) {
                                                             finishReason[0] = finishReasonObj.toString();
+                                                            // 保存包含finish_reason的chunk，用于后续日志记录
+                                                            finishReasonChunkBuilder.setLength(0);
+                                                            finishReasonChunkBuilder.append(chunk);
                                                             log.info("从流式数据块中捕获finish_reason: {}", finishReason[0]);
                                                         }
                                                     }
@@ -256,7 +261,7 @@ public class ProxyServiceImpl implements ProxyService {
                                             }
                                         }
                                     } catch (Exception e) {
-                                        log.debug("从数据块解析finish_reason失败: {}", e.getMessage());
+                                        log.warn("从数据块解析finish_reason失败: {}", e.getMessage());
                                     }
                                 }
 
@@ -307,6 +312,14 @@ public class ProxyServiceImpl implements ProxyService {
                                     logDto.setModel(model);
                                 }
 
+                                // 记录finish_reason（如果已经捕获到）
+                                if (finishReason[0] != null) {
+                                    logDto.setFinishReason(finishReason[0]);
+                                    log.info("记录finish_reason到日志: {}", finishReason[0]);
+                                } else {
+                                    log.warn("流式响应完成，但未捕获到finish_reason");
+                                }
+
                                 // 尝试从最后的 chunk 中解析 token 统计
                                 String lastChunk = lastChunkBuilder.toString();
                                 if (StrUtil.isNotBlank(lastChunk) && lastChunk.contains("\"usage\"")) {
@@ -344,35 +357,6 @@ public class ProxyServiceImpl implements ProxyService {
                                                 }
                                             } else {
                                                 log.warn("无法从流式响应解析Token使用量");
-                                            }
-
-                                            // 解析 finishReason
-                                            try {
-                                                Map<String, Object> responseMap = JSONUtil.toBean(jsonStr, Map.class);
-                                                if (responseMap.containsKey("choices")) {
-                                                    List<?> choices = (List<?>) responseMap.get("choices");
-                                                    if (CollUtil.isNotEmpty(choices) && choices.get(0) instanceof Map) {
-                                                        Map<String, Object> firstChoice = (Map<String, Object>) choices.get(0);
-                                                        if (firstChoice.containsKey("finish_reason")) {
-                                                            Object finishReasonObj = firstChoice.get("finish_reason");
-                                                            if (finishReasonObj != null) {
-                                                                String finishReason = finishReasonObj.toString();
-                                                                logDto.setFinishReason(finishReason);
-                                                                log.info("流式响应的finish_reason: {}", finishReason);
-                                                            } else {
-                                                                log.warn("流式响应中finish_reason为null");
-                                                            }
-                                                        } else {
-                                                            log.warn("流式响应的第一个choice中未找到finish_reason键。可用键: {}", firstChoice.keySet());
-                                                        }
-                                                    } else {
-                                                        log.warn("流式响应的choices数组为空或第一个choice不是Map");
-                                                    }
-                                                } else {
-                                                    log.warn("流式响应中未找到choices键。可用键: {}", responseMap.keySet());
-                                                }
-                                            } catch (Exception e) {
-                                                log.error("从流式响应解析finish_reason失败: {}", e.getMessage(), e);
                                             }
                                         }
                                     } catch (Exception e) {
