@@ -10,6 +10,11 @@ spring:
       port: ${REDIS_PORT}
       password: ${REDIS_PASSWORD}
 
+# 生产环境加密配置（必须通过环境变量设置）
+agentguard:
+  encryption:
+    key: ${ENCRYPTION_KEY}
+
 logging:
   level:
     com.agentguard: INFO

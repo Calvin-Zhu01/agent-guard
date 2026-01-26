@@ -292,7 +292,7 @@ public class ProxyServiceImpl implements ProxyService {
                                 AgentLogCreateDTO logDto = new AgentLogCreateDTO();
                                 logDto.setAgentId(agent.getId());
                                 logDto.setRequestType(RequestType.LLM_CALL);
-                                logDto.setEndpoint("/chat/completions");
+                                logDto.setEndpoint(llmUrl);
                                 logDto.setMethod("POST");
                                 logDto.setRequestSummary(createLlmRequestSummary(request));
                                 logDto.setResponseStatus(ResponseStatus.SUCCESS);
@@ -919,10 +919,13 @@ public class ProxyServiceImpl implements ProxyService {
                               ResponseStatus responseStatus, long responseTimeMs,
                               PolicyResult policyResult, boolean success) {
         try {
+            // 构建真实的 LLM URL
+            String llmUrl = agent.getLlmBaseUrl() + "/chat/completions";
+
             AgentLogCreateDTO logDto = new AgentLogCreateDTO();
             logDto.setAgentId(agent.getId());
             logDto.setRequestType(RequestType.LLM_CALL);
-            logDto.setEndpoint("/chat/completions");
+            logDto.setEndpoint(llmUrl);
             logDto.setMethod("POST");
             logDto.setRequestSummary(createLlmRequestSummary(request));
             logDto.setResponseStatus(responseStatus);

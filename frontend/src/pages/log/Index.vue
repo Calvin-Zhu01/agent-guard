@@ -49,6 +49,35 @@ const policyTypeLabels: Record<PolicyType, string> = {
 const detailVisible = ref(false)
 const currentLog = ref<AgentLog | null>(null)
 
+// 解析请求摘要
+const parsedRequestSummary = computed(() => {
+  if (!currentLog.value?.requestSummary) return null
+  try {
+    return JSON.parse(currentLog.value.requestSummary)
+  } catch {
+    return null
+  }
+})
+
+// 格式化请求摘要为 JSON 字符串
+const formattedRequestSummary = computed(() => {
+  if (!parsedRequestSummary.value) return ''
+  return JSON.stringify(parsedRequestSummary.value, null, 2)
+})
+
+// 计算 Token 总数
+const totalTokens = computed(() => {
+  if (!currentLog.value) return 0
+  return (currentLog.value.tokenInput || 0) + (currentLog.value.tokenOutput || 0)
+})
+
+// 计算平均生成速度（tokens/秒）
+const tokensPerSecond = computed(() => {
+  if (!currentLog.value || !currentLog.value.tokenOutput || !currentLog.value.responseTimeMs) return 0
+  return (currentLog.value.tokenOutput / (currentLog.value.responseTimeMs / 1000)).toFixed(1)
+})
+
+// API 调用的格式化方法（保留用于 API_CALL）
 const formattedRequestHeaders = computed(() => {
   if (!currentLog.value?.requestHeaders) return ''
   try {
@@ -466,104 +495,239 @@ watch(activeTab, () => {
     </el-card>
 
     <!-- 详情对话框 -->
-    <el-dialog v-model="detailVisible" title="请求详情" width="80%" top="5vh">
+    <el-dialog
+      v-model="detailVisible"
+      :title="currentLog?.requestType === 'LLM_CALL' ? 'LLM 调用详情' : 'API 调用详情'"
+      width="80%"
+      top="5vh"
+    >
       <div class="detail-container" v-if="currentLog">
-        <div class="detail-header">
-          <el-descriptions :column="4" border size="small">
-            <el-descriptions-item label="时间">{{ formatDateTime(currentLog.createdAt) }}</el-descriptions-item>
-            <el-descriptions-item label="Agent">{{ currentLog.agentName }}</el-descriptions-item>
-            <el-descriptions-item label="方法">{{ currentLog.method }}</el-descriptions-item>
-            <el-descriptions-item label="状态">
-              <el-tag :type="getStatusType(currentLog.responseStatus)" effect="dark" size="small">
-                {{ getStatusLabel(currentLog.responseStatus) }}
-              </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="端点" :span="3">{{ currentLog.endpoint }}</el-descriptions-item>
-            <el-descriptions-item label="响应时间">{{ currentLog.responseTimeMs ? `${currentLog.responseTimeMs}ms` : '-' }}</el-descriptions-item>
-            <el-descriptions-item v-if="currentLog.requestType === 'LLM_CALL'" label="模型" :span="2">{{ currentLog.model || '-' }}</el-descriptions-item>
-            <el-descriptions-item v-if="currentLog.requestType === 'LLM_CALL'" label="首token时间">
-              {{ currentLog.firstTokenTimeMs ? `${currentLog.firstTokenTimeMs}ms` : '-' }}
-            </el-descriptions-item>
-            <el-descriptions-item v-if="currentLog.requestType === 'LLM_CALL'" label="输入Token">{{ currentLog.tokenInput || '-' }}</el-descriptions-item>
-            <el-descriptions-item v-if="currentLog.requestType === 'LLM_CALL'" label="输出Token">{{ currentLog.tokenOutput || '-' }}</el-descriptions-item>
-            <el-descriptions-item v-if="currentLog.requestType === 'LLM_CALL'" label="成本">{{ formatCost(currentLog.cost) }}</el-descriptions-item>
-            <el-descriptions-item v-if="currentLog.requestType === 'LLM_CALL'" label="完成原因">
-              <el-tooltip v-if="currentLog.finishReason" :content="getFinishReasonTooltip(currentLog.finishReason)" placement="top">
-                <el-tag :type="getFinishReasonType(currentLog.finishReason)" effect="plain" size="small">
-                  {{ getFinishReasonLabel(currentLog.finishReason) }}
+        <!-- LLM 调用详情 -->
+        <template v-if="currentLog.requestType === 'LLM_CALL'">
+          <!-- 基本信息 -->
+          <div class="detail-header">
+            <el-descriptions :column="4" border size="small">
+              <el-descriptions-item label="时间">{{ formatDateTime(currentLog.createdAt) }}</el-descriptions-item>
+              <el-descriptions-item label="Agent">{{ currentLog.agentName }}</el-descriptions-item>
+              <el-descriptions-item label="模型">{{ currentLog.model || '-' }}</el-descriptions-item>
+              <el-descriptions-item label="状态">
+                <el-tag :type="getStatusType(currentLog.responseStatus)" effect="dark" size="small">
+                  {{ getStatusLabel(currentLog.responseStatus) }}
                 </el-tag>
-              </el-tooltip>
-              <span v-else class="text-muted">-</span>
-            </el-descriptions-item>
-          </el-descriptions>
-        </div>
+              </el-descriptions-item>
+              <el-descriptions-item label="端点" :span="2">{{ currentLog.endpoint }}</el-descriptions-item>
+              <el-descriptions-item label="传输方式">
+                <el-tag :type="currentLog.firstTokenTimeMs ? 'success' : 'info'" effect="plain" size="small">
+                  {{ currentLog.firstTokenTimeMs ? '流式' : '非流式' }}
+                </el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item label="完成原因">
+                <el-tooltip v-if="currentLog.finishReason" :content="getFinishReasonTooltip(currentLog.finishReason)" placement="top">
+                  <el-tag :type="getFinishReasonType(currentLog.finishReason)" effect="plain" size="small">
+                    {{ getFinishReasonLabel(currentLog.finishReason) }}
+                  </el-tag>
+                </el-tooltip>
+                <span v-else class="text-muted">-</span>
+              </el-descriptions-item>
+            </el-descriptions>
+          </div>
 
-        <!-- 策略信息面板 -->
-        <div class="policy-info" v-if="currentLog.policySnapshot">
-          <el-alert type="warning" :closable="false" show-icon>
-            <template #title>
-              <span class="policy-title">
-                触发策略：{{ currentLog.policySnapshot.name || currentLog.policySnapshot.id }}
-                <el-tag
-                  :type="getPolicyActionType(currentLog.policySnapshot.action)"
-                  effect="dark"
-                  size="small"
-                  style="margin-left: 8px"
-                >
-                  {{ policyActionLabels[currentLog.policySnapshot.action] || currentLog.policySnapshot.action }}
-                </el-tag>
-                <el-tag
-                  v-if="currentLog.policySnapshot.type"
-                  type="info"
-                  effect="plain"
-                  size="small"
-                  style="margin-left: 8px"
-                >
-                  {{ policyTypeLabels[currentLog.policySnapshot.type] || currentLog.policySnapshot.type }}
-                </el-tag>
-              </span>
-            </template>
-            <template #default>
-              <div class="policy-conditions" v-if="currentLog.policySnapshot.conditions">
-                <span class="conditions-label">匹配条件：</span>
-                <code class="conditions-value">{{ formatPolicyConditions(currentLog.policySnapshot.conditions) }}</code>
-              </div>
-              <div class="policy-reason" v-if="currentLog.policySnapshot.reason">
-                {{ currentLog.policySnapshot.reason }}
-              </div>
-            </template>
-          </el-alert>
-        </div>
+          <!-- 策略信息面板 -->
+          <div class="policy-info" v-if="currentLog.policySnapshot">
+            <el-alert type="warning" :closable="false" show-icon>
+              <template #title>
+                <span class="policy-title">
+                  触发策略：{{ currentLog.policySnapshot.name || currentLog.policySnapshot.id }}
+                  <el-tag
+                    :type="getPolicyActionType(currentLog.policySnapshot.action)"
+                    effect="dark"
+                    size="small"
+                    style="margin-left: 8px"
+                  >
+                    {{ policyActionLabels[currentLog.policySnapshot.action] || currentLog.policySnapshot.action }}
+                  </el-tag>
+                  <el-tag
+                    v-if="currentLog.policySnapshot.type"
+                    type="info"
+                    effect="plain"
+                    size="small"
+                    style="margin-left: 8px"
+                  >
+                    {{ policyTypeLabels[currentLog.policySnapshot.type] || currentLog.policySnapshot.type }}
+                  </el-tag>
+                </span>
+              </template>
+              <template #default>
+                <div class="policy-conditions" v-if="currentLog.policySnapshot.conditions">
+                  <span class="conditions-label">匹配条件：</span>
+                  <code class="conditions-value">{{ formatPolicyConditions(currentLog.policySnapshot.conditions) }}</code>
+                </div>
+                <div class="policy-reason" v-if="currentLog.policySnapshot.reason">
+                  {{ currentLog.policySnapshot.reason }}
+                </div>
+              </template>
+            </el-alert>
+          </div>
 
-        <div class="detail-body">
-          <!-- 左侧：请求信息 -->
-          <div class="detail-column">
-            <div class="detail-panel request-headers">
-              <div class="panel-title">请求头 (Request Headers)</div>
-              <div class="panel-content">
-                <pre v-if="formattedRequestHeaders">{{ formattedRequestHeaders }}</pre>
-                <el-empty v-else description="无请求头数据" :image-size="60" />
+          <!-- 卡片式布局 -->
+          <div class="llm-cards">
+            <!-- Token 使用卡片 -->
+            <el-card class="metric-card" shadow="hover">
+              <template #header>
+                <div class="card-header-title">Token 使用</div>
+              </template>
+              <div class="metric-content">
+                <div class="metric-item">
+                  <div class="metric-label">输入 Token</div>
+                  <div class="metric-value primary">{{ currentLog.tokenInput || 0 }}</div>
+                </div>
+                <div class="metric-item">
+                  <div class="metric-label">输出 Token</div>
+                  <div class="metric-value success">{{ currentLog.tokenOutput || 0 }}</div>
+                </div>
+                <div class="metric-item">
+                  <div class="metric-label">总计</div>
+                  <div class="metric-value">{{ totalTokens }}</div>
+                </div>
+              </div>
+            </el-card>
+
+            <!-- 成本分析卡片 -->
+            <el-card class="metric-card" shadow="hover">
+              <template #header>
+                <div class="card-header-title">成本分析</div>
+              </template>
+              <div class="metric-content">
+                <div class="metric-item">
+                  <div class="metric-label">总成本</div>
+                  <div class="metric-value warning">{{ formatCost(currentLog.cost) }}</div>
+                </div>
+                <div class="metric-item">
+                  <div class="metric-label">模型</div>
+                  <div class="metric-value-text">{{ currentLog.model || '-' }}</div>
+                </div>
+              </div>
+            </el-card>
+
+            <!-- 性能指标卡片 -->
+            <el-card class="metric-card" shadow="hover">
+              <template #header>
+                <div class="card-header-title">性能指标</div>
+              </template>
+              <div class="metric-content">
+                <div class="metric-item">
+                  <div class="metric-label">总响应时间</div>
+                  <div class="metric-value">
+                    {{ currentLog.responseTimeMs ? `${(currentLog.responseTimeMs / 1000).toFixed(2)}s` : '-' }}
+                  </div>
+                </div>
+                <div class="metric-item">
+                  <div class="metric-label">首 Token 时间</div>
+                  <div class="metric-value" :class="currentLog.firstTokenTimeMs ? 'info' : ''">
+                    {{ currentLog.firstTokenTimeMs ? `${(currentLog.firstTokenTimeMs / 1000).toFixed(2)}s` : '非流式' }}
+                  </div>
+                </div>
+                <div class="metric-item" v-if="currentLog.firstTokenTimeMs">
+                  <div class="metric-label">生成速度</div>
+                  <div class="metric-value success">{{ tokensPerSecond }} tokens/s</div>
+                </div>
+              </div>
+            </el-card>
+          </div>
+
+          <!-- 请求摘要 -->
+          <div class="detail-panel request-summary" v-if="formattedRequestSummary">
+            <div class="panel-title">请求摘要 (Request Summary)</div>
+            <div class="panel-content">
+              <pre>{{ formattedRequestSummary }}</pre>
+            </div>
+          </div>
+        </template>
+
+        <!-- API 调用详情（保持原有布局） -->
+        <template v-else>
+          <div class="detail-header">
+            <el-descriptions :column="4" border size="small">
+              <el-descriptions-item label="时间">{{ formatDateTime(currentLog.createdAt) }}</el-descriptions-item>
+              <el-descriptions-item label="Agent">{{ currentLog.agentName }}</el-descriptions-item>
+              <el-descriptions-item label="方法">{{ currentLog.method }}</el-descriptions-item>
+              <el-descriptions-item label="状态">
+                <el-tag :type="getStatusType(currentLog.responseStatus)" effect="dark" size="small">
+                  {{ getStatusLabel(currentLog.responseStatus) }}
+                </el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item label="端点" :span="3">{{ currentLog.endpoint }}</el-descriptions-item>
+              <el-descriptions-item label="响应时间">{{ currentLog.responseTimeMs ? `${currentLog.responseTimeMs}ms` : '-' }}</el-descriptions-item>
+            </el-descriptions>
+          </div>
+
+          <!-- 策略信息面板 -->
+          <div class="policy-info" v-if="currentLog.policySnapshot">
+            <el-alert type="warning" :closable="false" show-icon>
+              <template #title>
+                <span class="policy-title">
+                  触发策略：{{ currentLog.policySnapshot.name || currentLog.policySnapshot.id }}
+                  <el-tag
+                    :type="getPolicyActionType(currentLog.policySnapshot.action)"
+                    effect="dark"
+                    size="small"
+                    style="margin-left: 8px"
+                  >
+                    {{ policyActionLabels[currentLog.policySnapshot.action] || currentLog.policySnapshot.action }}
+                  </el-tag>
+                  <el-tag
+                    v-if="currentLog.policySnapshot.type"
+                    type="info"
+                    effect="plain"
+                    size="small"
+                    style="margin-left: 8px"
+                  >
+                    {{ policyTypeLabels[currentLog.policySnapshot.type] || currentLog.policySnapshot.type }}
+                  </el-tag>
+                </span>
+              </template>
+              <template #default>
+                <div class="policy-conditions" v-if="currentLog.policySnapshot.conditions">
+                  <span class="conditions-label">匹配条件：</span>
+                  <code class="conditions-value">{{ formatPolicyConditions(currentLog.policySnapshot.conditions) }}</code>
+                </div>
+                <div class="policy-reason" v-if="currentLog.policySnapshot.reason">
+                  {{ currentLog.policySnapshot.reason }}
+                </div>
+              </template>
+            </el-alert>
+          </div>
+
+          <div class="detail-body">
+            <!-- 左侧：请求信息 -->
+            <div class="detail-column">
+              <div class="detail-panel request-headers">
+                <div class="panel-title">请求头 (Request Headers)</div>
+                <div class="panel-content">
+                  <pre v-if="formattedRequestHeaders">{{ formattedRequestHeaders }}</pre>
+                  <el-empty v-else description="无请求头数据" :image-size="60" />
+                </div>
+              </div>
+              <div class="detail-panel request-body">
+                <div class="panel-title">请求体 (Request Body)</div>
+                <div class="panel-content">
+                  <pre v-if="formattedRequestBody">{{ formattedRequestBody }}</pre>
+                  <el-empty v-else description="无请求体数据" :image-size="60" />
+                </div>
               </div>
             </div>
-            <div class="detail-panel request-body">
-              <div class="panel-title">请求体 (Request Body)</div>
-              <div class="panel-content">
-                <pre v-if="formattedRequestBody">{{ formattedRequestBody }}</pre>
-                <el-empty v-else description="无请求体数据" :image-size="60" />
+            <!-- 右侧：响应信息 -->
+            <div class="detail-column">
+              <div class="detail-panel response-body">
+                <div class="panel-title">响应体 (Response Body)</div>
+                <div class="panel-content">
+                  <pre v-if="formattedResponseBody">{{ formattedResponseBody }}</pre>
+                  <el-empty v-else description="无响应体数据" :image-size="60" />
+                </div>
               </div>
             </div>
           </div>
-          <!-- 右侧：响应信息 -->
-          <div class="detail-column">
-            <div class="detail-panel response-body">
-              <div class="panel-title">响应体 (Response Body)</div>
-              <div class="panel-content">
-                <pre v-if="formattedResponseBody">{{ formattedResponseBody }}</pre>
-                <el-empty v-else description="无响应体数据" :image-size="60" />
-              </div>
-            </div>
-          </div>
-        </div>
+        </template>
       </div>
     </el-dialog>
   </div>
@@ -632,6 +796,70 @@ watch(activeTab, () => {
   color: var(--el-text-color-regular);
 }
 
+/* LLM 调用卡片布局 */
+.llm-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.metric-card {
+  border-radius: 8px;
+}
+
+.card-header-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--el-text-color-primary);
+}
+
+.metric-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.metric-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.metric-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.metric-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.metric-value.primary {
+  color: var(--el-color-primary);
+}
+
+.metric-value.success {
+  color: var(--el-color-success);
+}
+
+.metric-value.warning {
+  color: var(--el-color-warning);
+}
+
+.metric-value.info {
+  color: var(--el-color-info);
+}
+
+.metric-value-text {
+  font-size: 14px;
+  color: var(--el-text-color-regular);
+  word-break: break-all;
+}
+
+/* API 调用详情布局（原有样式） */
 .detail-body {
   display: flex;
   gap: 16px;
@@ -667,6 +895,10 @@ watch(activeTab, () => {
   flex: 1;
 }
 
+.detail-panel.request-summary {
+  max-height: 300px;
+}
+
 .panel-title {
   padding: 12px 16px;
   font-weight: 600;
@@ -688,5 +920,18 @@ watch(activeTab, () => {
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 13px;
   line-height: 1.5;
+}
+
+/* 响应式布局 */
+@media (max-width: 1200px) {
+  .llm-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .llm-cards {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

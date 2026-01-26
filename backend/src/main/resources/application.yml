@@ -95,6 +95,10 @@ agentguard:
   proxy:
     # 是否允许访问内网地址，生产环境必须为 false
     allow-internal-address: false
+  encryption:
+    # 加密密钥（用于加密敏感数据如 LLM API Key）
+    # 生产环境必须通过环境变量 ENCRYPTION_KEY 设置，密钥长度建议 32 字节
+    key: ${ENCRYPTION_KEY:agentguard-encryption-key-32-bytes-long}
 
 # Spring Boot Actuator 配置
 management:

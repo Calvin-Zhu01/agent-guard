@@ -14,6 +14,7 @@ import com.agentguard.agent.mapper.AgentPolicyBindingMapper;
 import com.agentguard.agent.service.AgentService;
 import com.agentguard.common.exception.BusinessException;
 import com.agentguard.common.exception.ErrorCode;
+import com.agentguard.common.util.EncryptionUtil;
 import com.agentguard.policy.entity.PolicyDO;
 import com.agentguard.policy.mapper.PolicyMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -40,12 +41,19 @@ public class AgentServiceImpl implements AgentService {
     private final AgentMapper agentMapper;
     private final AgentPolicyBindingMapper bindingMapper;
     private final PolicyMapper policyMapper;
+    private final EncryptionUtil encryptionUtil;
 
     @Override
     @Transactional
     public AgentDTO create(AgentCreateDTO dto) {
         AgentDO agentDO = BeanUtil.copyProperties(dto, AgentDO.class);
         agentDO.setApiKey(generateApiKey());
+
+        // 加密 LLM API Key
+        if (StrUtil.isNotBlank(dto.getLlmApiKey())) {
+            agentDO.setLlmApiKey(encryptionUtil.encrypt(dto.getLlmApiKey()));
+        }
+
         agentMapper.insert(agentDO);
         return toDTO(agentDO);
     }
@@ -82,9 +90,14 @@ public class AgentServiceImpl implements AgentService {
             throw new BusinessException(ErrorCode.AGENT_NOT_FOUND);
         }
 
+        // 加密 LLM API Key（如果提供了新的密钥）
+        if (StrUtil.isNotBlank(dto.getLlmApiKey())) {
+            dto.setLlmApiKey(encryptionUtil.encrypt(dto.getLlmApiKey()));
+        }
+
         // 使用 Hutool 忽略空值拷贝
         BeanUtil.copyProperties(dto, agentDO, CopyOptions.create().ignoreNullValue());
-        
+
         agentDO.setUpdatedAt(java.time.LocalDateTime.now());
 
         agentMapper.updateById(agentDO);
@@ -128,9 +141,10 @@ public class AgentServiceImpl implements AgentService {
     private AgentDTO toDTO(AgentDO agentDO) {
         AgentDTO dto = BeanUtil.copyProperties(agentDO, AgentDTO.class);
 
-        // 脱敏 LLM API Key（只显示前缀和后4位）
+        // 解密并脱敏 LLM API Key（只显示前缀和后4位）
         if (StrUtil.isNotBlank(agentDO.getLlmApiKey())) {
-            dto.setLlmApiKey(maskApiKey(agentDO.getLlmApiKey()));
+            String decrypted = encryptionUtil.decrypt(agentDO.getLlmApiKey());
+            dto.setLlmApiKey(maskApiKey(decrypted));
         }
 
         // 查询绑定的策略
@@ -158,8 +172,11 @@ public class AgentServiceImpl implements AgentService {
     private AgentDTO toDTOWithoutMasking(AgentDO agentDO) {
         AgentDTO dto = BeanUtil.copyProperties(agentDO, AgentDTO.class);
 
-        // 不脱敏 LLM API Key，保留真实密钥用于代理转发
+        // 解密 LLM API Key，保留真实密钥用于代理转发
         // 注意：此方法仅供内部代理服务使用，不应暴露给外部API
+        if (StrUtil.isNotBlank(agentDO.getLlmApiKey())) {
+            dto.setLlmApiKey(encryptionUtil.decrypt(agentDO.getLlmApiKey()));
+        }
 
         // 查询绑定的策略
         List<String> policyIds = bindingMapper.selectPolicyIdsByAgentId(agentDO.getId());
