@@ -6,6 +6,7 @@ import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
+import com.agentguard.log.enums.RequestType;
 import com.agentguard.policy.dto.PolicyDTO;
 import com.agentguard.policy.dto.PolicyResult;
 import com.agentguard.policy.dto.RateLimitResult;
@@ -79,15 +80,9 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
         }
     }
 
-    @Override
-    public PolicyResult evaluate(String targetUrl, String method, Map<String, String> headers, 
-                                  Map<String, Object> body, String agentId) {
-        return evaluate(targetUrl, method, headers, body, agentId, null);
-    }
-
     /**
-     * 评估请求是否符合策略（带客户端IP）
-     * 
+     * 评估请求是否符合策略
+     *
      * 策略评估顺序：
      * 1. 首先评估Agent级别策略（scope=AGENT且agentId匹配）
      * 2. 然后评估全局策略（scope=GLOBAL）
@@ -99,22 +94,39 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
      * @param body 请求体
      * @param agentId Agent ID
      * @param clientIp 客户端IP（用于频率限制）
+     * @param requestType 请求类型（LLM_CALL/API_CALL/ALL）
      * @return 策略评估结果
      */
-    public PolicyResult evaluate(String targetUrl, String method, Map<String, String> headers, 
-                                  Map<String, Object> body, String agentId, String clientIp) {
+    @Override
+    public PolicyResult evaluate(String targetUrl, String method, Map<String, String> headers,
+                                  Map<String, Object> body, String agentId, String clientIp,
+                                  RequestType requestType) {
         // 确保策略已初始化
         ensureInitialized();
-        
-        log.debug("开始评估策略: targetUrl={}, method={}, agentId={}", targetUrl, method, agentId);
-        
+
+        log.debug("开始评估策略: targetUrl={}, method={}, agentId={}, requestType={}",
+                targetUrl, method, agentId, requestType);
+
         // 获取按优先级排序的策略列表（Agent级别优先）
         List<PolicyDTO> sortedPolicies = getSortedPoliciesForAgent(agentId);
-        log.debug("找到 {} 条待评估策略", sortedPolicies.size());
+
+        // 根据 requestType 过滤策略
+        sortedPolicies = sortedPolicies.stream()
+                .filter(policy -> {
+                    RequestType policyRequestType = policy.getRequestType();
+                    // 策略的 requestType 为 null 或 ALL 时，适用于所有请求
+                    // 策略的 requestType 与当前请求类型匹配时，适用
+                    return policyRequestType == null
+                            || policyRequestType == RequestType.ALL
+                            || policyRequestType == requestType;
+                })
+                .toList();
+        log.debug("根据requestType过滤后，剩余 {} 条待评估策略", sortedPolicies.size());
 
         // 按优先级顺序评估策略
         for (PolicyDTO policy : sortedPolicies) {
-            log.debug("检查策略: id={}, name={}, type={}", policy.getId(), policy.getName(), policy.getType());
+            log.debug("检查策略: id={}, name={}, type={}, requestType={}",
+                    policy.getId(), policy.getName(), policy.getType(), policy.getRequestType());
             if (matchesPolicy(policy, targetUrl, method, headers, body)) {
                 log.info("策略匹配成功: id={}, name={}, action={}", policy.getId(), policy.getName(), policy.getAction());
                 PolicyResult result = createResult(policy, targetUrl, headers, body, clientIp);
@@ -181,12 +193,10 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
                             .computeIfAbsent(agentId, k -> new ArrayList<>())
                             .add(policy);
                     } else {
-                        log.warn("Agent级别策略 {} 没有agentId，视为全局策略", policy.getId());
                         newGlobalPolicies.add(policy);
                     }
                 } else {
-                    // scope为null的情况，记录警告并视为全局策略
-                    log.warn("策略 {} 的scope为null，视为全局策略", policy.getId());
+                    // scope为null的情况，视为全局策略
                     newGlobalPolicies.add(policy);
                 }
             }
@@ -275,7 +285,7 @@ public class ConfigurablePolicyEngine implements PolicyEngine {
             }
         }
 
-        log.debug("所有条件匹配成功");
+        log.debug("所有条件匹配结束");
         return true;
     }
 

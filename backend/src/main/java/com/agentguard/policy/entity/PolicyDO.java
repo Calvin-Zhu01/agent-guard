@@ -1,5 +1,6 @@
 package com.agentguard.policy.entity;
 
+import com.agentguard.log.enums.RequestType;
 import com.agentguard.policy.enums.PolicyAction;
 import com.agentguard.policy.enums.PolicyScope;
 import com.agentguard.policy.enums.PolicyType;
@@ -44,6 +45,9 @@ public class PolicyDO {
 
     /** 关联的Agent ID（仅当scope为AGENT时有效） */
     private String agentId;
+
+    /** 请求类型：LLM_CALL-LLM调用，API_CALL-API调用，ALL-全部（默认ALL） */
+    private RequestType requestType;
 
     /** 是否启用 */
     private Boolean enabled;

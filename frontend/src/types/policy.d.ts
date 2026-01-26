@@ -13,6 +13,9 @@ export type PolicyAction = 'ALLOW' | 'DENY' | 'APPROVAL' | 'RATE_LIMIT'
 /** 策略作用域 */
 export type PolicyScope = 'GLOBAL' | 'AGENT'
 
+/** 请求类型 */
+export type RequestType = 'LLM_CALL' | 'API_CALL' | 'ALL'
+
 /** 策略信息 */
 export interface Policy {
   id: string
@@ -24,6 +27,7 @@ export interface Policy {
   priority: number
   scope: PolicyScope
   agentId?: string
+  requestType?: RequestType
   enabled: boolean
   createdAt: string
   updatedAt: string
@@ -39,6 +43,7 @@ export interface PolicyCreateDTO {
   priority?: number
   scope?: PolicyScope
   agentId?: string
+  requestType?: RequestType
 }
 
 /** 更新策略请求 */
@@ -51,6 +56,7 @@ export interface PolicyUpdateDTO {
   priority?: number
   scope?: PolicyScope
   agentId?: string
+  requestType?: RequestType
 }
 
 /** 排序方式 */

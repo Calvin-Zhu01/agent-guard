@@ -1,5 +1,6 @@
 package com.agentguard.policy.dto;
 
+import com.agentguard.log.enums.RequestType;
 import com.agentguard.policy.enums.PolicyAction;
 import com.agentguard.policy.enums.PolicyScope;
 import com.agentguard.policy.enums.PolicyType;
@@ -42,6 +43,9 @@ public class PolicyUpdateDTO {
 
     @Schema(description = "关联的Agent ID（仅当scope为AGENT时有效）")
     private String agentId;
+
+    @Schema(description = "请求类型：LLM_CALL-LLM调用，API_CALL-API调用，ALL-全部")
+    private RequestType requestType;
 
     @Schema(description = "策略标签（JSON数组）", example = "[\"财务\", \"支付\", \"高风险\"]")
     private String tags;

@@ -7,7 +7,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as policyApi from '@/api/policy'
-import type { Policy, PolicyCreateDTO, PolicyUpdateDTO, PolicyType, PolicyAction, PolicyScope } from '@/types/policy'
+import type { Policy, PolicyCreateDTO, PolicyUpdateDTO, PolicyType, PolicyAction, PolicyScope, RequestType } from '@/types/policy'
 
 // 列表数据
 const loading = ref(false)
@@ -35,6 +35,7 @@ const formData = ref({
   type: 'ACCESS_CONTROL' as PolicyType,
   priority: 0,
   scope: 'GLOBAL' as PolicyScope,
+  requestType: 'ALL' as RequestType,
   // 访问控制配置
   accessControl: {
     mode: 'simple' as 'simple' | 'advanced',
@@ -87,10 +88,24 @@ const policyScopeMap: Record<PolicyScope, { label: string; color: TagType }> = {
   AGENT: { label: 'Agent级', color: 'success' }
 }
 
+// 请求类型映射
+const requestTypeMap: Record<RequestType, { label: string; color: TagType }> = {
+  LLM_CALL: { label: 'LLM调用', color: 'success' },
+  API_CALL: { label: 'API调用', color: 'primary' },
+  ALL: { label: '全部', color: 'info' }
+}
+
 // 策略作用域选项
 const policyScopeOptions: { label: string; value: PolicyScope }[] = [
   { label: '全局策略', value: 'GLOBAL' },
   { label: 'Agent级策略', value: 'AGENT' }
+]
+
+// 请求类型选项
+const requestTypeOptions: { label: string; value: RequestType; desc: string }[] = [
+  { label: '全部', value: 'ALL', desc: '策略适用于所有类型的请求' },
+  { label: 'LLM 调用', value: 'LLM_CALL', desc: '仅适用于 LLM API 调用' },
+  { label: 'API 调用', value: 'API_CALL', desc: '仅适用于外部 API 调用' }
 ]
 
 // 策略类型选项
@@ -437,6 +452,7 @@ function resetForm() {
     type: 'ACCESS_CONTROL',
     priority: 0,
     scope: 'GLOBAL',
+    requestType: 'ALL',
     accessControl: {
       mode: 'simple',
       urlPattern: '',
@@ -486,7 +502,8 @@ function handleOpenEdit(policy: Policy) {
   formData.value.type = policy.type
   formData.value.priority = policy.priority || 0
   formData.value.scope = policy.scope || 'GLOBAL'
-  
+  formData.value.requestType = policy.requestType || 'ALL'
+
   // 根据动作设置访问控制的 action
   if (policy.type === 'ACCESS_CONTROL') {
     formData.value.accessControl.action = policy.action as 'ALLOW' | 'DENY'
@@ -578,7 +595,8 @@ async function handleSubmit() {
       conditions: buildConditionsJson(),
       action: computedAction.value,
       priority: formData.value.priority,
-      scope: formData.value.scope
+      scope: formData.value.scope,
+      requestType: formData.value.requestType
     }
     
     if (isEditMode.value && editingPolicyId.value) {
@@ -764,6 +782,13 @@ onMounted(() => {
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column prop="requestType" label="请求类型" width="100">
+          <template #default="{ row }">
+            <el-tag :type="requestTypeMap[row.requestType || 'ALL'].color" size="small">
+              {{ requestTypeMap[row.requestType || 'ALL'].label }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="规则配置" min-width="180" show-overflow-tooltip>
           <template #default="{ row }">
             <span>{{ formatConditions(row.type, row.conditions) }}</span>
@@ -844,6 +869,23 @@ onMounted(() => {
             <el-radio value="AGENT">
               <el-tag type="success" size="small">Agent级</el-tag>
               <span class="radio-desc">仅对绑定的 Agent 生效</span>
+            </el-radio>
+          </el-radio-group>
+        </el-form-item>
+
+        <el-form-item label="请求类型" required>
+          <el-radio-group v-model="formData.requestType">
+            <el-radio value="ALL">
+              <el-tag type="info" size="small">全部</el-tag>
+              <span class="radio-desc">适用于所有类型的请求</span>
+            </el-radio>
+            <el-radio value="LLM_CALL">
+              <el-tag type="success" size="small">LLM调用</el-tag>
+              <span class="radio-desc">仅适用于 LLM API 调用</span>
+            </el-radio>
+            <el-radio value="API_CALL">
+              <el-tag type="primary" size="small">API调用</el-tag>
+              <span class="radio-desc">仅适用于外部 API 调用</span>
             </el-radio>
           </el-radio-group>
         </el-form-item>

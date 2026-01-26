@@ -111,7 +111,9 @@ public class ProxyServiceImpl implements ProxyService {
                 "POST",
                 null,
                 request.getBody(),
-                agent.getId()
+                agent.getId(),
+                null,
+                RequestType.LLM_CALL
         );
 
         // 4. 根据策略结果处理请求
@@ -168,7 +170,9 @@ public class ProxyServiceImpl implements ProxyService {
                 "POST",
                 null,
                 request.getBody(),
-                agent.getId()
+                agent.getId(),
+                null,
+                RequestType.LLM_CALL
         );
 
         // 4. 如果被策略拦截，返回错误事件
@@ -179,11 +183,36 @@ public class ProxyServiceImpl implements ProxyService {
 
             SseEmitter emitter = new SseEmitter();
             try {
-                emitter.send(SseEmitter.event()
-                        .name("error")
-                        .data(errorMessage));
+                // 构建符合 OpenAI 格式的错误响应
+                Map<String, Object> errorResponse = MapUtil.builder(new LinkedHashMap<String, Object>())
+                        .put("error", MapUtil.builder(new LinkedHashMap<String, Object>())
+                                .put("message", errorMessage)
+                                .put("type", policyResult.isRequireApproval() ? "approval_required" : "policy_blocked")
+                                .put("code", policyResult.isRequireApproval() ? "approval_required" : "policy_violation")
+                                .build())
+                        .build();
+
+                // 发送 JSON 格式的错误（不使用 event name，直接作为 data）
+                emitter.send(SseEmitter.event().data(JSONUtil.toJsonStr(errorResponse)));
+
+                // 记录日志
+                long responseTimeMs = System.currentTimeMillis() - startTime;
+                ResponseStatus responseStatus = policyResult.isRequireApproval()
+                        ? ResponseStatus.PENDING_APPROVAL
+                        : ResponseStatus.BLOCKED;
+                recordLlmLog(agent, request,
+                        ProxyResponseDTO.builder()
+                                .status(responseStatus)
+                                .message(errorMessage)
+                                .build(),
+                        responseStatus,
+                        responseTimeMs,
+                        policyResult,
+                        false);
+
                 emitter.complete();
             } catch (IOException e) {
+                log.error("发送策略拦截错误事件失败", e);
                 emitter.completeWithError(e);
             }
             return emitter;
@@ -278,9 +307,42 @@ public class ProxyServiceImpl implements ProxyService {
                             }
                         },
                         error -> {
-                            // 流式响应错误
+                            // 流式响应错误 - 发送错误事件而不是直接 completeWithError
                             log.error("Agent {} 的流式请求失败: {}", agent.getId(), error.getMessage());
-                            emitter.completeWithError(error);
+                            try {
+                                // 构建错误消息
+                                String errorMessage = "LLM API 请求失败: " + error.getMessage();
+
+                                // 构建符合 OpenAI 格式的错误响应
+                                Map<String, Object> errorResponse = MapUtil.builder(new LinkedHashMap<String, Object>())
+                                        .put("error", MapUtil.builder(new LinkedHashMap<String, Object>())
+                                                .put("message", errorMessage)
+                                                .put("type", "api_error")
+                                                .put("code", "llm_api_failed")
+                                                .build())
+                                        .build();
+
+                                // 发送 JSON 格式的错误（不使用 event name，直接作为 data）
+                                emitter.send(SseEmitter.event().data(JSONUtil.toJsonStr(errorResponse)));
+
+                                // 记录失败日志
+                                long responseTimeMs = System.currentTimeMillis() - startTime;
+                                recordLlmLog(agent, request,
+                                        ProxyResponseDTO.builder()
+                                                .status(ResponseStatus.FAILED)
+                                                .message(errorMessage)
+                                                .build(),
+                                        ResponseStatus.FAILED,
+                                        responseTimeMs,
+                                        policyResult,
+                                        false);
+
+                                // 正常完成（而不是 completeWithError）
+                                emitter.complete();
+                            } catch (IOException ioEx) {
+                                log.error("发送错误事件失败", ioEx);
+                                emitter.completeWithError(ioEx);
+                            }
                         },
                         () -> {
                             // 流式响应完成
@@ -391,7 +453,9 @@ public class ProxyServiceImpl implements ProxyService {
                 request.getMethod(),
                 request.getHeaders(),
                 request.getBody(),
-                agent.getId()
+                agent.getId(),
+                null,
+                RequestType.API_CALL
         );
 
         // 3. 根据策略结果处理请求
@@ -1060,7 +1124,7 @@ public class ProxyServiceImpl implements ProxyService {
         try {
             // 打印完整的请求体内容用于调试
             if (request.getBody() != null) {
-                log.debug("LLM请求体内容: {}", JSONUtil.toJsonPrettyStr(request.getBody()));
+                // log.debug("LLM请求体内容: {}", JSONUtil.toJsonPrettyStr(request.getBody()));
             }
 
             Map<String, Object> summary = new LinkedHashMap<>();

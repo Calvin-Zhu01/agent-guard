@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS `policy` (
     `priority` INT NOT NULL DEFAULT 0 COMMENT '优先级（数值越大优先级越高）',
     `scope` VARCHAR(20) NOT NULL DEFAULT 'GLOBAL' COMMENT '作用域: GLOBAL-全局, AGENT-Agent级别',
     `agent_id` VARCHAR(36) NULL COMMENT '关联的Agent ID（仅当scope为AGENT时有效）',
+    `request_type` VARCHAR(20) NOT NULL DEFAULT 'ALL' COMMENT '请求类型: LLM_CALL-LLM调用, API_CALL-API调用, ALL-全部',
     `tags` VARCHAR(500) COMMENT '策略标签（JSON数组，如 ["财务", "支付", "高风险"]）',
     `enabled` TINYINT NOT NULL DEFAULT 1 COMMENT '是否启用: 0-停用 1-启用',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -88,7 +89,8 @@ CREATE TABLE IF NOT EXISTS `policy` (
     `deleted` TINYINT NOT NULL DEFAULT 0,
     UNIQUE KEY `uk_name` (`name`, `deleted`),
     KEY `idx_scope` (`scope`),
-    KEY `idx_agent_id` (`agent_id`)
+    KEY `idx_agent_id` (`agent_id`),
+    KEY `idx_request_type` (`request_type`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='策略表';
 
 -- Agent策略绑定表

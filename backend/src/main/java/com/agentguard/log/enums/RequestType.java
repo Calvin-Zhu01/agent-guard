@@ -18,7 +18,10 @@ public enum RequestType {
     API_CALL("API_CALL", "API调用"),
 
     /** LLM调用 */
-    LLM_CALL("LLM_CALL", "LLM调用");
+    LLM_CALL("LLM_CALL", "LLM调用"),
+
+    /** 全部（策略适用于所有类型） */
+    ALL("ALL", "全部");
 
     @EnumValue
     @JsonValue
