@@ -1051,26 +1051,62 @@ public class ProxyServiceImpl implements ProxyService {
 
     /**
      * 创建 LLM 请求摘要
+     * 记录请求参数的补充信息
      *
      * @param request LLM请求
      * @return JSON格式的请求摘要
      */
     private String createLlmRequestSummary(LlmProxyRequestDTO request) {
         try {
-            Map<String, Object> summary = MapUtil.builder(new LinkedHashMap<String, Object>())
-                    .put("type", "llm_call")
-                    .build();
+            // 打印完整的请求体内容用于调试
+            if (request.getBody() != null) {
+                log.debug("LLM请求体内容: {}", JSONUtil.toJsonPrettyStr(request.getBody()));
+            }
+
+            Map<String, Object> summary = new LinkedHashMap<>();
 
             if (request.getBody() != null) {
-                if (request.getBody().containsKey("model")) {
-                    summary.put("model", request.getBody().get("model"));
-                }
-                // 记录消息数量而不是完整内容
-                if (request.getBody().containsKey("messages")) {
-                    Object messages = request.getBody().get("messages");
+                Map<String, Object> body = request.getBody();
+
+                // 消息数量和系统提示词长度
+                if (body.containsKey("messages")) {
+                    Object messages = body.get("messages");
                     if (messages instanceof List) {
-                        summary.put("messageCount", ((List<?>) messages).size());
+                        List<?> messageList = (List<?>) messages;
+                        summary.put("messageCount", messageList.size());
+
+                        // 计算系统提示词长度
+                        int systemPromptLength = 0;
+                        for (Object msg : messageList) {
+                            if (msg instanceof Map) {
+                                Map<?, ?> message = (Map<?, ?>) msg;
+                                if ("system".equals(message.get("role"))) {
+                                    Object content = message.get("content");
+                                    if (content != null) {
+                                        systemPromptLength += content.toString().length();
+                                    }
+                                }
+                            }
+                        }
+                        if (systemPromptLength > 0) {
+                            summary.put("systemPromptLength", systemPromptLength);
+                        }
                     }
+                }
+
+                // 温度参数
+                if (body.containsKey("temperature")) {
+                    summary.put("temperature", body.get("temperature"));
+                }
+
+                // 最大 token 数
+                if (body.containsKey("max_tokens")) {
+                    summary.put("max_tokens", body.get("max_tokens"));
+                }
+
+                // top_p 参数
+                if (body.containsKey("top_p")) {
+                    summary.put("top_p", body.get("top_p"));
                 }
             }
 
