@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
 public class ApprovalRequestDO {
 
     /** 主键ID */
-    @TableId(type = IdType.ASSIGN_UUID)
+    @TableId(type = IdType.INPUT)
     private String id;
 
     /** 关联策略ID */

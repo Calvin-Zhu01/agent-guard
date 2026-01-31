@@ -36,9 +36,10 @@ public interface ApprovalService {
      * @param page 分页参数
      * @param status 审批状态（可选）
      * @param agentId Agent ID（可选）
+     * @param approvalId 审批ID（可选，支持模糊匹配）
      * @return 分页结果
      */
-    IPage<ApprovalDTO> page(Page<ApprovalDTO> page, ApprovalStatus status, String agentId);
+    IPage<ApprovalDTO> page(Page<ApprovalDTO> page, ApprovalStatus status, String agentId, String approvalId);
 
     /**
      * 批准审批请求

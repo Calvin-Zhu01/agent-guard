@@ -16,7 +16,8 @@ const total = ref(0)
 const queryParams = ref({
   current: 1,
   size: 10,
-  status: undefined as ApprovalStatus | undefined
+  status: undefined as ApprovalStatus | undefined,
+  approvalId: undefined as string | undefined
 })
 
 // 详情对话框
@@ -146,9 +147,9 @@ async function handleReject(approval: Approval) {
 }
 
 /**
- * 状态过滤变化
+ * 查询
  */
-function handleStatusChange() {
+function handleSearch() {
   queryParams.value.current = 1
   fetchData()
 }
@@ -158,6 +159,7 @@ function handleStatusChange() {
  */
 function handleReset() {
   queryParams.value.status = undefined
+  queryParams.value.approvalId = undefined
   queryParams.value.current = 1
   fetchData()
 }
@@ -192,14 +194,21 @@ onMounted(() => {
       </template>
 
       <!-- 过滤栏 -->
-      <el-form :inline="true">
+      <el-form :inline="true" @submit.prevent="handleSearch">
+        <el-form-item label="审批ID">
+          <el-input
+            v-model="queryParams.approvalId"
+            placeholder="输入审批ID"
+            clearable
+            style="width: 200px"
+          />
+        </el-form-item>
         <el-form-item label="状态">
           <el-select
             v-model="queryParams.status"
             placeholder="全部状态"
             clearable
             style="width: 150px"
-            @change="handleStatusChange"
           >
             <el-option
               v-for="item in approvalStatusOptions"
@@ -210,12 +219,14 @@ onMounted(() => {
           </el-select>
         </el-form-item>
         <el-form-item>
+          <el-button type="primary" @click="handleSearch">查询</el-button>
           <el-button @click="handleReset">重置</el-button>
         </el-form-item>
       </el-form>
 
       <!-- 审批表格 -->
       <el-table :data="approvals" v-loading="loading" stripe>
+        <el-table-column prop="id" label="审批ID" width="200" show-overflow-tooltip />
         <el-table-column prop="agentName" label="Agent" width="150">
           <template #default="{ row }">
             {{ row.agentName || '-' }}

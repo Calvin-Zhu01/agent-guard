@@ -17,6 +17,7 @@ import com.agentguard.approval.event.ApprovalApprovedEvent;
 import com.agentguard.approval.mapper.ApprovalMapper;
 import com.agentguard.approval.service.ApprovalExecutor;
 import com.agentguard.approval.service.ApprovalService;
+import com.agentguard.approval.util.ApprovalIdGenerator;
 import com.agentguard.common.exception.BusinessException;
 import com.agentguard.common.exception.ErrorCode;
 import com.agentguard.log.enums.ResponseStatus;
@@ -51,11 +52,14 @@ public class ApprovalServiceImpl implements ApprovalService {
     private final ApprovalExecutor approvalExecutor;
     private final ApplicationEventPublisher eventPublisher;
     private final AgentLogService agentLogService;
+    private final ApprovalIdGenerator approvalIdGenerator;
 
     @Override
     @Transactional
     public ApprovalDTO create(ApprovalCreateDTO dto) {
         ApprovalRequestDO approvalDO = new ApprovalRequestDO();
+        // 生成自定义审批ID
+        approvalDO.setId(approvalIdGenerator.nextUUID(approvalDO));
         approvalDO.setPolicyId(dto.getPolicyId());
         approvalDO.setAgentId(dto.getAgentId());
         approvalDO.setRequestData(dto.getRequestData());
@@ -77,7 +81,7 @@ public class ApprovalServiceImpl implements ApprovalService {
     }
 
     @Override
-    public IPage<ApprovalDTO> page(Page<ApprovalDTO> page, ApprovalStatus status, String agentId) {
+    public IPage<ApprovalDTO> page(Page<ApprovalDTO> page, ApprovalStatus status, String agentId, String approvalId) {
         LambdaQueryWrapper<ApprovalRequestDO> wrapper = new LambdaQueryWrapper<>();
 
         if (ObjectUtil.isNotNull(status)) {
@@ -86,6 +90,11 @@ public class ApprovalServiceImpl implements ApprovalService {
 
         if (StrUtil.isNotBlank(agentId)) {
             wrapper.eq(ApprovalRequestDO::getAgentId, agentId);
+        }
+
+        // 支持审批ID模糊查询
+        if (StrUtil.isNotBlank(approvalId)) {
+            wrapper.like(ApprovalRequestDO::getId, approvalId);
         }
 
         wrapper.orderByDesc(ApprovalRequestDO::getCreatedAt);

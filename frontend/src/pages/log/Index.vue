@@ -429,19 +429,25 @@ watch(activeTab, () => {
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="完成原因" width="120">
+            <el-table-column label="完成原因" width="140">
               <template #default="{ row }">
-                <el-tooltip v-if="row.finishReason" :content="getFinishReasonTooltip(row.finishReason)" placement="top">
+                <!-- 当有工具调用时，显示工具名称的tooltip -->
+                <el-tooltip
+                  v-if="row.finishReason && (row.finishReason === 'tool_calls' || row.finishReason === 'function_call') && row.toolCalls"
+                  :content="`调用工具: ${row.toolCalls}`"
+                  placement="top"
+                >
+                  <el-tag :type="getFinishReasonType(row.finishReason)" effect="plain" size="small">
+                    {{ getFinishReasonLabel(row.finishReason) }}
+                    <span class="tool-count">({{ row.toolCalls.split(',').length }})</span>
+                  </el-tag>
+                </el-tooltip>
+                <!-- 其他完成原因，显示原有的tooltip -->
+                <el-tooltip v-else-if="row.finishReason" :content="getFinishReasonTooltip(row.finishReason)" placement="top">
                   <el-tag :type="getFinishReasonType(row.finishReason)" effect="plain" size="small">
                     {{ getFinishReasonLabel(row.finishReason) }}
                   </el-tag>
                 </el-tooltip>
-                <span v-else class="text-muted">-</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="工具名称" width="150" show-overflow-tooltip>
-              <template #default="{ row }">
-                <span v-if="row.toolCalls" class="tool-calls">{{ row.toolCalls }}</span>
                 <span v-else class="text-muted">-</span>
               </template>
             </el-table-column>
@@ -770,9 +776,11 @@ watch(activeTab, () => {
   gap: 8px;
 }
 
-.tool-calls {
-  color: var(--el-color-primary);
-  font-size: 13px;
+.tool-count {
+  margin-left: 4px;
+  font-size: 11px;
+  opacity: 0.8;
+  font-weight: 600;
 }
 
 .detail-container {

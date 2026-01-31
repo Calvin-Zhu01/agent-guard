@@ -33,9 +33,10 @@ public class ApprovalController {
             @Parameter(description = "当前页码") @RequestParam(defaultValue = "1") Integer current,
             @Parameter(description = "每页大小") @RequestParam(defaultValue = "10") Integer size,
             @Parameter(description = "审批状态") @RequestParam(required = false) ApprovalStatus status,
-            @Parameter(description = "Agent ID") @RequestParam(required = false) String agentId) {
+            @Parameter(description = "Agent ID") @RequestParam(required = false) String agentId,
+            @Parameter(description = "审批ID（支持模糊匹配）") @RequestParam(required = false) String approvalId) {
         Page<ApprovalDTO> page = new Page<>(current, size);
-        return Result.success(approvalService.page(page, status, agentId));
+        return Result.success(approvalService.page(page, status, agentId, approvalId));
     }
 
     @Operation(summary = "获取审批详情")
