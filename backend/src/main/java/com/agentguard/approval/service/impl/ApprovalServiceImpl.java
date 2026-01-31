@@ -3,19 +3,24 @@ package com.agentguard.approval.service.impl;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONUtil;
 import com.agentguard.agent.entity.AgentDO;
 import com.agentguard.agent.mapper.AgentMapper;
 import com.agentguard.approval.dto.ApprovalCreateDTO;
 import com.agentguard.approval.dto.ApprovalDTO;
 import com.agentguard.approval.dto.ApprovalExecutionResultDTO;
+import com.agentguard.approval.dto.ApprovalStatusDTO;
 import com.agentguard.approval.entity.ApprovalRequestDO;
 import com.agentguard.approval.enums.ApprovalStatus;
 import com.agentguard.approval.enums.ExecutionStatus;
+import com.agentguard.approval.event.ApprovalApprovedEvent;
 import com.agentguard.approval.mapper.ApprovalMapper;
 import com.agentguard.approval.service.ApprovalExecutor;
 import com.agentguard.approval.service.ApprovalService;
 import com.agentguard.common.exception.BusinessException;
 import com.agentguard.common.exception.ErrorCode;
+import com.agentguard.log.enums.ResponseStatus;
+import com.agentguard.log.service.AgentLogService;
 import com.agentguard.policy.entity.PolicyDO;
 import com.agentguard.policy.mapper.PolicyMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -24,6 +29,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,6 +49,8 @@ public class ApprovalServiceImpl implements ApprovalService {
     private final PolicyMapper policyMapper;
     private final AgentMapper agentMapper;
     private final ApprovalExecutor approvalExecutor;
+    private final ApplicationEventPublisher eventPublisher;
+    private final AgentLogService agentLogService;
 
     @Override
     @Transactional
@@ -100,19 +108,17 @@ public class ApprovalServiceImpl implements ApprovalService {
 
         approvalMapper.updateById(approvalDO);
 
-        // 如果配置为自动执行，则执行原始请求
-        if (approvalExecutor.isAutoExecuteEnabled()) {
-            log.info("自动执行已批准的请求: approvalId={}", id);
-            try {
-                ApprovalExecutionResultDTO result = approvalExecutor.execute(id);
-                // 重新获取更新后的审批记录
-                approvalDO = approvalMapper.selectById(id);
-                log.info("自动执行完成: approvalId={}, status={}", id, result.getStatus());
-            } catch (Exception e) {
-                log.error("自动执行失败: approvalId={}, error={}", id, e.getMessage(), e);
-                // 执行失败不影响审批结果，通知已在执行器中发送
-            }
+        // 更新关联的日志状态为 APPROVED
+        try {
+            agentLogService.updateStatusByApprovalRequestId(id, ResponseStatus.APPROVED);
+            log.info("已更新审批请求 {} 关联的日志状态为 APPROVED", id);
+        } catch (Exception e) {
+            log.error("更新日志状态失败: approvalId={}, error={}", id, e.getMessage(), e);
         }
+
+        // 发布审批通过事件，事件监听器会在事务提交后异步执行原始请求
+        log.info("发布审批通过事件: approvalId={}", id);
+        eventPublisher.publishEvent(new ApprovalApprovedEvent(this, id));
 
         return toDTO(approvalDO);
     }
@@ -128,6 +134,14 @@ public class ApprovalServiceImpl implements ApprovalService {
         approvalDO.setRemark(remark);
 
         approvalMapper.updateById(approvalDO);
+
+        // 更新关联的日志状态为 REJECTED
+        try {
+            agentLogService.updateStatusByApprovalRequestId(id, ResponseStatus.REJECTED);
+            log.info("已更新审批请求 {} 关联的日志状态为 REJECTED", id);
+        } catch (Exception e) {
+            log.error("更新日志状态失败: approvalId={}, error={}", id, e.getMessage(), e);
+        }
 
         // 发送拒绝通知
         try {
@@ -155,6 +169,40 @@ public class ApprovalServiceImpl implements ApprovalService {
         LambdaQueryWrapper<ApprovalRequestDO> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(ApprovalRequestDO::getStatus, ApprovalStatus.PENDING);
         return approvalMapper.selectCount(wrapper);
+    }
+
+    @Override
+    public ApprovalStatusDTO getStatus(String id) {
+        ApprovalRequestDO approvalDO = approvalMapper.selectById(id);
+        if (ObjectUtil.isNull(approvalDO)) {
+            throw new BusinessException(ErrorCode.APPROVAL_NOT_FOUND);
+        }
+
+        ApprovalStatusDTO statusDTO = ApprovalStatusDTO.builder()
+                .status(approvalDO.getStatus())
+                .build();
+
+        // 如果审批通过且已执行成功，返回执行结果
+        if (approvalDO.getStatus() == ApprovalStatus.APPROVED
+                && approvalDO.getExecutionStatus() == ExecutionStatus.SUCCESS
+                && StrUtil.isNotBlank(approvalDO.getExecutionResult())) {
+            // 将JSON字符串解析为对象返回
+            try {
+                Object executionResult = JSONUtil.parse(approvalDO.getExecutionResult());
+                statusDTO.setExecutionResult(executionResult);
+            } catch (Exception e) {
+                log.warn("解析执行结果失败: approvalId={}, error={}", id, e.getMessage());
+                // 如果解析失败，返回原始字符串
+                statusDTO.setExecutionResult(approvalDO.getExecutionResult());
+            }
+        }
+
+        // 如果审批被拒绝，返回拒绝原因
+        if (approvalDO.getStatus() == ApprovalStatus.REJECTED) {
+            statusDTO.setRemark(approvalDO.getRemark());
+        }
+
+        return statusDTO;
     }
 
     /**

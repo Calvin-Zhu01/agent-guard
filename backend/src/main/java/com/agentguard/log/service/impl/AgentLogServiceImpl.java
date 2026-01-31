@@ -17,6 +17,7 @@ import com.agentguard.log.mapper.AgentLogMapper;
 import com.agentguard.log.service.AgentLogService;
 import com.agentguard.stats.service.StatsService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
@@ -139,5 +140,19 @@ public class AgentLogServiceImpl implements AgentLogService {
             dto.setAgentName(finalAgentNameMap.get(logDO.getAgentId()));
             return dto;
         });
+    }
+
+    @Override
+    @Transactional
+    public void updateStatusByApprovalRequestId(String approvalRequestId, ResponseStatus newStatus) {
+        if (StrUtil.isBlank(approvalRequestId)) {
+            return;
+        }
+
+        LambdaUpdateWrapper<AgentLogDO> wrapper = new LambdaUpdateWrapper<>();
+        wrapper.eq(AgentLogDO::getApprovalRequestId, approvalRequestId)
+               .set(AgentLogDO::getResponseStatus, newStatus);
+
+        agentLogMapper.update(null, wrapper);
     }
 }

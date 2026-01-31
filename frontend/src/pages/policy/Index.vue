@@ -4,7 +4,7 @@
  *
  * @author zhuhx
  */
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as policyApi from '@/api/policy'
 import type { Policy, PolicyCreateDTO, PolicyUpdateDTO, PolicyType, PolicyAction, PolicyScope, RequestType } from '@/types/policy'
@@ -35,7 +35,7 @@ const formData = ref({
   type: 'ACCESS_CONTROL' as PolicyType,
   priority: 0,
   scope: 'GLOBAL' as PolicyScope,
-  requestType: 'ALL' as RequestType,
+  requestType: 'API_CALL' as RequestType, // 默认改为 API_CALL
   // 访问控制配置
   accessControl: {
     mode: 'simple' as 'simple' | 'advanced',
@@ -47,10 +47,8 @@ const formData = ref({
   // 人工审批配置
   approval: {
     mode: 'simple' as 'simple' | 'advanced',
-    simpleType: 'amount_threshold' as 'amount_threshold' | 'url_match',
-    amountField: 'amount',
-    amountThreshold: 10000,
     urlPattern: '',
+    method: 'ALL',
     customConditions: ''
   },
   // 频率限制配置
@@ -92,7 +90,7 @@ const policyScopeMap: Record<PolicyScope, { label: string; color: TagType }> = {
 const requestTypeMap: Record<RequestType, { label: string; color: TagType }> = {
   LLM_CALL: { label: 'LLM调用', color: 'success' },
   API_CALL: { label: 'API调用', color: 'primary' },
-  ALL: { label: '全部', color: 'info' }
+  ALL: { label: '全部', color: 'info' } // 保留用于显示旧数据
 }
 
 // 策略作用域选项
@@ -101,9 +99,8 @@ const policyScopeOptions: { label: string; value: PolicyScope }[] = [
   { label: 'Agent级策略', value: 'AGENT' }
 ]
 
-// 请求类型选项
+// 请求类型选项（移除 ALL 选项）
 const requestTypeOptions: { label: string; value: RequestType; desc: string }[] = [
-  { label: '全部', value: 'ALL', desc: '策略适用于所有类型的请求' },
   { label: 'LLM 调用', value: 'LLM_CALL', desc: '仅适用于 LLM API 调用' },
   { label: 'API 调用', value: 'API_CALL', desc: '仅适用于外部 API 调用' }
 ]
@@ -114,6 +111,16 @@ const policyTypeOptions: { label: string; value: PolicyType; desc: string }[] = 
   { label: '人工审批', value: 'APPROVAL', desc: '高风险操作需要人工审批后执行' },
   { label: '频率限制', value: 'RATE_LIMIT', desc: '限制 Agent 的请求频率' }
 ]
+
+// 根据请求类型过滤策略类型选项
+const filteredPolicyTypeOptions = computed(() => {
+  // 当选择 LLM_CALL 时，不显示人工审批选项（LLM 审批功能暂未开放）
+  if (formData.value.requestType === 'LLM_CALL') {
+    return policyTypeOptions.filter(option => option.value !== 'APPROVAL')
+  }
+  // API_CALL 显示所有选项
+  return policyTypeOptions
+})
 
 // HTTP 方法选项
 const httpMethodOptions = [
@@ -135,11 +142,6 @@ const sensitiveFieldOptions = [
   { label: '姓名', value: 'name' }
 ]
 
-// 审批触发条件 - 简单模式预设
-const approvalSimpleTypes = [
-  { label: '金额超过阈值', value: 'amount_threshold', desc: '当请求中的金额字段超过设定值时触发' },
-  { label: 'URL 路径匹配', value: 'url_match', desc: '当请求 URL 匹配指定模式时触发' }
-]
 
 /**
  * 根据策略类型获取对应的动作
@@ -196,18 +198,10 @@ function buildConditionsJson(): string {
         } catch {
           conditions = {}
         }
-      } else if (formData.value.approval.simpleType === 'amount_threshold') {
-        conditions = {
-          bodyConditions: [{
-            field: formData.value.approval.amountField,
-            operator: 'gt',
-            value: formData.value.approval.amountThreshold
-          }],
-          action: 'APPROVAL'
-        }
-      } else if (formData.value.approval.simpleType === 'url_match') {
+      } else {
         conditions = {
           urlPattern: formData.value.approval.urlPattern,
+          method: formData.value.approval.method,
           action: 'APPROVAL'
         }
       }
@@ -267,15 +261,11 @@ function parseConditionsJson(type: PolicyType, conditionsStr: string) {
       case 'APPROVAL':
         // 判断是否为高级模式（排除 action 字段判断）
         const approvalKeys = Object.keys(conditions).filter(k => k !== 'action')
-        if (approvalKeys.length === 1 && conditions.bodyConditions?.length === 1 && conditions.bodyConditions[0].operator === 'gt') {
+        if (approvalKeys.length <= 2 && conditions.urlPattern) {
+          // 简单模式：只有 urlPattern 和可选的 method
           formData.value.approval.mode = 'simple'
-          formData.value.approval.simpleType = 'amount_threshold'
-          formData.value.approval.amountField = conditions.bodyConditions[0].field || 'amount'
-          formData.value.approval.amountThreshold = conditions.bodyConditions[0].value || 10000
-        } else if (approvalKeys.length === 1 && conditions.urlPattern) {
-          formData.value.approval.mode = 'simple'
-          formData.value.approval.simpleType = 'url_match'
           formData.value.approval.urlPattern = conditions.urlPattern || ''
+          formData.value.approval.method = conditions.method || 'ALL'
         } else {
           formData.value.approval.mode = 'advanced'
           formData.value.approval.customConditions = JSON.stringify(conditions, null, 2)
@@ -371,18 +361,19 @@ function formatConditions(type: PolicyType, conditionsStr: string): string {
       case 'APPROVAL': {
         // URL 模式
         if (conditions.urlPattern) {
-          parts.push(`URL: ${conditions.urlPattern}`)
+          const method = conditions.method || 'ALL'
+          parts.push(`${method} ${conditions.urlPattern}`)
         }
         // Body 条件
         if (conditions.bodyConditions?.length) {
-          const bodyParts = conditions.bodyConditions.map((b: any) => 
+          const bodyParts = conditions.bodyConditions.map((b: any) =>
             `${b.field} ${formatOperator(b.operator)} ${b.value}`
           )
           parts.push(bodyParts.join(', '))
         }
         // Header 条件
         if (conditions.headerConditions?.length) {
-          const headerParts = conditions.headerConditions.map((h: any) => 
+          const headerParts = conditions.headerConditions.map((h: any) =>
             `${h.field} ${formatOperator(h.operator)} ${h.value}`
           )
           parts.push(`Header: ${headerParts.join(', ')}`)
@@ -452,7 +443,7 @@ function resetForm() {
     type: 'ACCESS_CONTROL',
     priority: 0,
     scope: 'GLOBAL',
-    requestType: 'ALL',
+    requestType: 'API_CALL', // 默认改为 API_CALL
     accessControl: {
       mode: 'simple',
       urlPattern: '',
@@ -462,10 +453,8 @@ function resetForm() {
     },
     approval: {
       mode: 'simple',
-      simpleType: 'amount_threshold',
-      amountField: 'amount',
-      amountThreshold: 10000,
       urlPattern: '',
+      method: 'ALL',
       customConditions: ''
     },
     rateLimit: {
@@ -560,12 +549,7 @@ async function handleSubmit() {
         return
       }
     } else {
-      const { simpleType, amountThreshold, urlPattern } = formData.value.approval
-      if (simpleType === 'amount_threshold' && (!amountThreshold || amountThreshold <= 0)) {
-        ElMessage.warning('请输入有效的金额阈值')
-        return
-      }
-      if (simpleType === 'url_match' && !urlPattern) {
+      if (!formData.value.approval.urlPattern) {
         ElMessage.warning('请输入 URL 匹配模式')
         return
       }
@@ -690,6 +674,22 @@ function handlePageChange(page: number) {
 function handleDialogClose() {
   resetForm()
 }
+
+/**
+ * 监听请求类型变化，自动调整策略类型
+ */
+watch(() => formData.value.requestType, (newRequestType) => {
+  // 获取当前可用的策略类型
+  const availableTypes = filteredPolicyTypeOptions.value.map(opt => opt.value)
+
+  // 如果当前选择的策略类型不在可用选项中，切换到第一个可用的策略类型
+  if (!availableTypes.includes(formData.value.type)) {
+    if (availableTypes.length > 0) {
+      formData.value.type = availableTypes[0]
+      ElMessage.info('当前策略类型不适用于所选请求类型，已自动切换')
+    }
+  }
+})
 
 onMounted(() => {
   fetchData()
@@ -846,7 +846,7 @@ onMounted(() => {
         <el-form-item label="策略类型" required>
           <el-select v-model="formData.type" style="width: 100%" :disabled="isEditMode">
             <el-option
-              v-for="item in policyTypeOptions"
+              v-for="item in filteredPolicyTypeOptions"
               :key="item.value"
               :label="item.label"
               :value="item.value"
@@ -875,10 +875,6 @@ onMounted(() => {
 
         <el-form-item label="请求类型" required>
           <el-radio-group v-model="formData.requestType">
-            <el-radio value="ALL">
-              <el-tag type="info" size="small">全部</el-tag>
-              <span class="radio-desc">适用于所有类型的请求</span>
-            </el-radio>
             <el-radio value="LLM_CALL">
               <el-tag type="success" size="small">LLM调用</el-tag>
               <span class="radio-desc">仅适用于 LLM API 调用</span>
@@ -1012,50 +1008,23 @@ onMounted(() => {
 
           <!-- 简单模式 -->
           <template v-if="formData.approval.mode === 'simple'">
-            <el-form-item label="触发类型" required>
-              <el-select v-model="formData.approval.simpleType" style="width: 200px">
-                <el-option 
-                  v-for="item in approvalSimpleTypes" 
-                  :key="item.value" 
+            <el-form-item label="URL 模式" required>
+              <el-input
+                v-model="formData.approval.urlPattern"
+                placeholder="例如：/api/admin/.* 或 /api/payment/transfer"
+              />
+              <div class="field-hint">支持正则表达式，匹配的请求需要审批</div>
+            </el-form-item>
+            <el-form-item label="HTTP 方法">
+              <el-select v-model="formData.approval.method" style="width: 200px">
+                <el-option
+                  v-for="item in httpMethodOptions"
+                  :key="item.value"
                   :label="item.label"
                   :value="item.value"
                 />
               </el-select>
-              <div class="field-hint">{{ approvalSimpleTypes.find(t => t.value === formData.approval.simpleType)?.desc }}</div>
             </el-form-item>
-
-            <!-- 金额阈值配置 -->
-            <template v-if="formData.approval.simpleType === 'amount_threshold'">
-              <el-form-item label="金额字段" required>
-                <el-input 
-                  v-model="formData.approval.amountField" 
-                  placeholder="请求体中的金额字段名，如 amount 或 data.amount"
-                  style="width: 300px"
-                />
-                <div class="field-hint">支持嵌套字段，如 payment.amount</div>
-              </el-form-item>
-              <el-form-item label="阈值" required>
-                <el-input-number 
-                  v-model="formData.approval.amountThreshold" 
-                  :min="1" 
-                  :max="99999999"
-                  :precision="2"
-                  style="width: 200px"
-                />
-                <div class="field-hint">当字段值大于此阈值时，需要人工审批</div>
-              </el-form-item>
-            </template>
-
-            <!-- URL 匹配配置 -->
-            <template v-if="formData.approval.simpleType === 'url_match'">
-              <el-form-item label="URL 模式" required>
-                <el-input 
-                  v-model="formData.approval.urlPattern" 
-                  placeholder="例如：/api/admin/.* 或 /api/payment/transfer"
-                />
-                <div class="field-hint">支持正则表达式，匹配的请求需要审批</div>
-              </el-form-item>
-            </template>
           </template>
 
           <!-- 高级模式 -->

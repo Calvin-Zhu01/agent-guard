@@ -119,18 +119,24 @@ public class ProxyServiceImpl implements ProxyService {
         // 4. 根据策略结果处理请求
         ProxyResponseDTO response;
         ResponseStatus responseStatus;
+        String approvalRequestId = null;
 
         if (policyResult.isBlocked()) {
-            if (policyResult.isRequireApproval()) {
-                // 需要审批
-                String approvalRequestId = createLlmApprovalRequest(agent.getId(), policyResult, request);
-                response = ProxyResponseDTO.pendingApproval(policyResult.getReason(), approvalRequestId);
-                responseStatus = ResponseStatus.PENDING_APPROVAL;
-            } else {
-                // 请求被拦截
-                response = ProxyResponseDTO.blocked(policyResult.getReason());
-                responseStatus = ResponseStatus.BLOCKED;
-            }
+            // TODO: LLM 审批功能暂时注释，后期再详细设计
+            // if (policyResult.isRequireApproval()) {
+            //     // 需要审批
+            //     approvalRequestId = createLlmApprovalRequest(agent.getId(), policyResult, request);
+            //     response = ProxyResponseDTO.pendingApproval(policyResult.getReason(), approvalRequestId);
+            //     responseStatus = ResponseStatus.PENDING_APPROVAL;
+            // } else {
+            //     // 请求被拦截
+            //     response = ProxyResponseDTO.blocked(policyResult.getReason());
+            //     responseStatus = ResponseStatus.BLOCKED;
+            // }
+
+            // 暂时统一拦截，不创建审批请求
+            response = ProxyResponseDTO.blocked(policyResult.getReason());
+            responseStatus = ResponseStatus.BLOCKED;
         } else {
             // 请求允许通过，转发到 LLM API
             try {
@@ -145,7 +151,7 @@ public class ProxyServiceImpl implements ProxyService {
         // 5. 记录日志（简化版，不记录完整对话内容）
         long responseTimeMs = System.currentTimeMillis() - startTime;
         boolean success = (responseStatus == ResponseStatus.SUCCESS);
-        recordLlmLog(agent, request, response, responseStatus, responseTimeMs, policyResult, success);
+        recordLlmLog(agent, request, response, responseStatus, responseTimeMs, policyResult, success, approvalRequestId);
 
         return response;
     }
@@ -175,44 +181,145 @@ public class ProxyServiceImpl implements ProxyService {
                 RequestType.LLM_CALL
         );
 
-        // 4. 如果被策略拦截，返回错误事件
+        // 4. 如果被策略拦截，返回标准的 OpenAI chunk 格式（作为正常回复）
         if (policyResult.isBlocked()) {
-            String errorMessage = policyResult.isRequireApproval()
-                    ? "请求需要审批: " + policyResult.getReason()
-                    : "请求被拦截: " + policyResult.getReason();
-
             SseEmitter emitter = new SseEmitter();
+            String approvalRequestId = null; // 声明在外部作用域
             try {
-                // 构建符合 OpenAI 格式的错误响应
-                Map<String, Object> errorResponse = MapUtil.builder(new LinkedHashMap<String, Object>())
-                        .put("error", MapUtil.builder(new LinkedHashMap<String, Object>())
-                                .put("message", errorMessage)
-                                .put("type", policyResult.isRequireApproval() ? "approval_required" : "policy_blocked")
-                                .put("code", policyResult.isRequireApproval() ? "approval_required" : "policy_violation")
-                                .build())
+                // 提取模型信息
+                String model = "gpt-4";
+                if (request.getBody() != null && request.getBody().containsKey("model")) {
+                    model = request.getBody().get("model").toString();
+                }
+
+                // TODO: LLM 审批功能暂时注释，后期再详细设计
+                // if (policyResult.isRequireApproval()) {
+                //     // 需要审批：创建审批请求并返回 tool_calls
+                //     approvalRequestId = createLlmApprovalRequest(agent.getId(), policyResult, request);
+                //     String errorMessage = "请求需要审批: " + policyResult.getReason();
+                //
+                //     // 第一个 chunk：返回消息内容
+                //     Map<String, Object> contentDelta = MapUtil.builder(new LinkedHashMap<String, Object>())
+                //             .put("role", "assistant")
+                //             .put("content", String.format(
+                //                     "[AgentGuard 审批] 您的请求需要人工审批。\n原因：%s\n审批ID：%s\n正在等待审批...",
+                //                     policyResult.getReason(),
+                //                     approvalRequestId))
+                //             .build();
+                //
+                //     Map<String, Object> contentChoice = MapUtil.builder(new LinkedHashMap<String, Object>())
+                //             .put("index", 0)
+                //             .put("delta", contentDelta)
+                //             .build();
+                //
+                //     Map<String, Object> contentChunk = MapUtil.builder(new LinkedHashMap<String, Object>())
+                //             .put("id", "chatcmpl-ag-approval-" + java.util.UUID.randomUUID().toString())
+                //             .put("object", "chat.completion.chunk")
+                //             .put("created", System.currentTimeMillis() / 1000)
+                //             .put("model", model)
+                //             .put("choices", CollUtil.newArrayList(contentChoice))
+                //             .build();
+                //
+                //     emitter.send(SseEmitter.event().data(JSONUtil.toJsonStr(contentChunk)));
+                //
+                //     // 第二个 chunk：返回 tool_calls（要求客户端调用审批状态查询）
+                //     Map<String, Object> toolCallFunction = MapUtil.builder(new LinkedHashMap<String, Object>())
+                //             .put("name", "check_agentguard_approval_status")
+                //             .put("arguments", JSONUtil.toJsonStr(MapUtil.builder(new LinkedHashMap<String, Object>())
+                //                     .put("approval_id", approvalRequestId)
+                //                     .put("poll_interval_seconds", 10)
+                //                     .put("max_wait_seconds", 300)
+                //                     .build()))
+                //             .build();
+                //
+                //     Map<String, Object> toolCall = MapUtil.builder(new LinkedHashMap<String, Object>())
+                //             .put("id", "call_" + java.util.UUID.randomUUID().toString().replace("-", ""))
+                //             .put("type", "function")
+                //             .put("function", toolCallFunction)
+                //             .build();
+                //
+                //     Map<String, Object> toolDelta = MapUtil.builder(new LinkedHashMap<String, Object>())
+                //             .put("tool_calls", CollUtil.newArrayList(toolCall))
+                //             .build();
+                //
+                //     Map<String, Object> toolChoice = MapUtil.builder(new LinkedHashMap<String, Object>())
+                //             .put("index", 0)
+                //             .put("delta", toolDelta)
+                //             .put("finish_reason", "tool_calls")
+                //             .build();
+                //
+                //     Map<String, Object> toolChunk = MapUtil.builder(new LinkedHashMap<String, Object>())
+                //             .put("id", "chatcmpl-ag-approval-" + java.util.UUID.randomUUID().toString())
+                //             .put("object", "chat.completion.chunk")
+                //             .put("created", System.currentTimeMillis() / 1000)
+                //             .put("model", model)
+                //             .put("choices", CollUtil.newArrayList(toolChoice))
+                //             .build();
+                //
+                //     emitter.send(SseEmitter.event().data(JSONUtil.toJsonStr(toolChunk)));
+                //
+                //     // 发送 [DONE]
+                //     emitter.send(SseEmitter.event().data("[DONE]"));
+                //
+                //     // 记录日志
+                //     long responseTimeMs = System.currentTimeMillis() - startTime;
+                //     recordLlmLog(agent, request,
+                //             ProxyResponseDTO.builder()
+                //                     .status(ResponseStatus.PENDING_APPROVAL)
+                //                     .message(errorMessage)
+                //                     .build(),
+                //             ResponseStatus.PENDING_APPROVAL,
+                //             responseTimeMs,
+                //             policyResult,
+                //             false,
+                //             approvalRequestId);
+                //
+                // } else {
+                //     // 直接拦截（不需要审批）
+                //     String errorMessage = "请求被拦截: " + policyResult.getReason();
+
+                // 暂时统一拦截，不创建审批请求
+                String errorMessage = "请求被拦截: " + policyResult.getReason();
+
+                Map<String, Object> deltaMap = MapUtil.builder(new LinkedHashMap<String, Object>())
+                        .put("role", "assistant")
+                        .put("content", "[AgentGuard 拦截] " + errorMessage)
                         .build();
 
-                // 发送 JSON 格式的错误（不使用 event name，直接作为 data）
-                emitter.send(SseEmitter.event().data(JSONUtil.toJsonStr(errorResponse)));
+                Map<String, Object> choiceMap = MapUtil.builder(new LinkedHashMap<String, Object>())
+                        .put("index", 0)
+                        .put("delta", deltaMap)
+                        .put("finish_reason", "content_filter")
+                        .build();
+
+                Map<String, Object> chunkResponse = MapUtil.builder(new LinkedHashMap<String, Object>())
+                        .put("id", "chatcmpl-ag-error-" + java.util.UUID.randomUUID().toString())
+                        .put("object", "chat.completion.chunk")
+                        .put("created", System.currentTimeMillis() / 1000)
+                        .put("model", model)
+                        .put("choices", CollUtil.newArrayList(choiceMap))
+                        .build();
+
+                emitter.send(SseEmitter.event().data(JSONUtil.toJsonStr(chunkResponse)));
+                emitter.send(SseEmitter.event().data("[DONE]"));
 
                 // 记录日志
                 long responseTimeMs = System.currentTimeMillis() - startTime;
-                ResponseStatus responseStatus = policyResult.isRequireApproval()
-                        ? ResponseStatus.PENDING_APPROVAL
-                        : ResponseStatus.BLOCKED;
                 recordLlmLog(agent, request,
                         ProxyResponseDTO.builder()
-                                .status(responseStatus)
+                                .status(ResponseStatus.BLOCKED)
                                 .message(errorMessage)
                                 .build(),
-                        responseStatus,
+                        ResponseStatus.BLOCKED,
                         responseTimeMs,
                         policyResult,
-                        false);
+                        false,
+                        null);
+                // } // 注释掉的 else 结束
 
                 emitter.complete();
             } catch (IOException e) {
-                log.error("发送策略拦截错误事件失败", e);
+                log.error("发送策略拦截消息失败", e);
                 emitter.completeWithError(e);
             }
             return emitter;
@@ -227,6 +334,7 @@ public class ProxyServiceImpl implements ProxyService {
         final String logId = java.util.UUID.randomUUID().toString();
         final long[] firstTokenTime = {0L}; // 记录首token时间
         final String[] finishReason = {null}; // 记录完成原因
+        final List<Map<String, Object>> accumulatedToolCalls = new java.util.ArrayList<>(); // 累积的tool_calls
 
         // 修改请求体，添加 stream_options 以获取 token 使用统计
         Map<String, Object> modifiedBody = new LinkedHashMap<>(request.getBody());
@@ -258,6 +366,47 @@ public class ProxyServiceImpl implements ProxyService {
 
                                 log.debug("接收到流式数据块: {}", chunk);
                                 emitter.send(SseEmitter.event().data(chunk));
+
+                                // 检查 chunk 是否包含 tool_calls（在 delta 中）
+                                if (chunk.contains("\"tool_calls\"")) {
+                                    try {
+                                        // 去掉 "data: " 前缀（如果有）
+                                        String jsonStr = chunk;
+                                        if (jsonStr.startsWith("data: ")) {
+                                            jsonStr = jsonStr.substring(6).trim();
+                                        }
+
+                                        // 确保是有效的 JSON
+                                        if (jsonStr.startsWith("{")) {
+                                            Map<String, Object> chunkMap = JSONUtil.toBean(jsonStr, Map.class);
+                                            if (chunkMap.containsKey("choices")) {
+                                                List<?> choices = (List<?>) chunkMap.get("choices");
+                                                if (CollUtil.isNotEmpty(choices) && choices.get(0) instanceof Map) {
+                                                    Map<String, Object> firstChoice = (Map<String, Object>) choices.get(0);
+
+                                                    // 从 delta 中提取 tool_calls
+                                                    if (firstChoice.containsKey("delta")) {
+                                                        Map<String, Object> delta = (Map<String, Object>) firstChoice.get("delta");
+                                                        if (delta.containsKey("tool_calls")) {
+                                                            Object toolCallsObj = delta.get("tool_calls");
+                                                            if (toolCallsObj instanceof List) {
+                                                                List<?> toolCalls = (List<?>) toolCallsObj;
+                                                                for (Object tc : toolCalls) {
+                                                                    if (tc instanceof Map) {
+                                                                        accumulatedToolCalls.add((Map<String, Object>) tc);
+                                                                        log.info("累积tool_call: {}", JSONUtil.toJsonStr(tc));
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } catch (Exception e) {
+                                        log.warn("从数据块解析tool_calls失败: {}", e.getMessage());
+                                    }
+                                }
 
                                 // 检查 chunk 是否包含 finish_reason（在 choices 数组中）
                                 if (chunk.contains("\"finish_reason\"")) {
@@ -307,23 +456,43 @@ public class ProxyServiceImpl implements ProxyService {
                             }
                         },
                         error -> {
-                            // 流式响应错误 - 发送错误事件而不是直接 completeWithError
+                            // 流式响应错误 - 返回标准的 OpenAI chunk 格式（作为正常回复）
                             log.error("Agent {} 的流式请求失败: {}", agent.getId(), error.getMessage());
                             try {
                                 // 构建错误消息
                                 String errorMessage = "LLM API 请求失败: " + error.getMessage();
 
-                                // 构建符合 OpenAI 格式的错误响应
-                                Map<String, Object> errorResponse = MapUtil.builder(new LinkedHashMap<String, Object>())
-                                        .put("error", MapUtil.builder(new LinkedHashMap<String, Object>())
-                                                .put("message", errorMessage)
-                                                .put("type", "api_error")
-                                                .put("code", "llm_api_failed")
-                                                .build())
+                                // 提取模型信息
+                                String model = "gpt-4";
+                                if (request.getBody() != null && request.getBody().containsKey("model")) {
+                                    model = request.getBody().get("model").toString();
+                                }
+
+                                // 构建符合 OpenAI chat.completion.chunk 格式的响应
+                                Map<String, Object> deltaMap = MapUtil.builder(new LinkedHashMap<String, Object>())
+                                        .put("role", "assistant")
+                                        .put("content", "[AgentGuard 错误] " + errorMessage)
                                         .build();
 
-                                // 发送 JSON 格式的错误（不使用 event name，直接作为 data）
-                                emitter.send(SseEmitter.event().data(JSONUtil.toJsonStr(errorResponse)));
+                                Map<String, Object> choiceMap = MapUtil.builder(new LinkedHashMap<String, Object>())
+                                        .put("index", 0)
+                                        .put("delta", deltaMap)
+                                        .put("finish_reason", "stop")
+                                        .build();
+
+                                Map<String, Object> chunkResponse = MapUtil.builder(new LinkedHashMap<String, Object>())
+                                        .put("id", "chatcmpl-ag-error-" + java.util.UUID.randomUUID().toString())
+                                        .put("object", "chat.completion.chunk")
+                                        .put("created", System.currentTimeMillis() / 1000)
+                                        .put("model", model)
+                                        .put("choices", CollUtil.newArrayList(choiceMap))
+                                        .build();
+
+                                // 发送标准的 OpenAI chunk 格式
+                                emitter.send(SseEmitter.event().data(JSONUtil.toJsonStr(chunkResponse)));
+
+                                // 发送 [DONE] 标记结束
+                                emitter.send(SseEmitter.event().data("[DONE]"));
 
                                 // 记录失败日志
                                 long responseTimeMs = System.currentTimeMillis() - startTime;
@@ -335,12 +504,13 @@ public class ProxyServiceImpl implements ProxyService {
                                         ResponseStatus.FAILED,
                                         responseTimeMs,
                                         policyResult,
-                                        false);
+                                        false,
+                                        null);
 
                                 // 正常完成（而不是 completeWithError）
                                 emitter.complete();
                             } catch (IOException ioEx) {
-                                log.error("发送错误事件失败", ioEx);
+                                log.error("发送错误消息失败", ioEx);
                                 emitter.completeWithError(ioEx);
                             }
                         },
@@ -378,6 +548,22 @@ public class ProxyServiceImpl implements ProxyService {
                                 if (finishReason[0] != null) {
                                     logDto.setFinishReason(finishReason[0]);
                                     log.info("记录finish_reason到日志: {}", finishReason[0]);
+
+                                    // 如果是 tool_calls，从累积的 tool_calls 中提取工具名称
+                                    if ("tool_calls".equals(finishReason[0]) && CollUtil.isNotEmpty(accumulatedToolCalls)) {
+                                        try {
+                                            log.info("累积的tool_calls数量: {}", accumulatedToolCalls.size());
+                                            String toolNames = parseToolCallsArray(accumulatedToolCalls);
+                                            if (StrUtil.isNotBlank(toolNames)) {
+                                                log.info("从累积的tool_calls提取的工具名称: {}", toolNames);
+                                                logDto.setToolCalls(toolNames);
+                                            } else {
+                                                log.warn("从累积的tool_calls中未能提取到工具名称");
+                                            }
+                                        } catch (Exception e) {
+                                            log.error("从累积的tool_calls提取工具名称失败: {}", e.getMessage(), e);
+                                        }
+                                    }
                                 } else {
                                     log.warn("流式响应完成，但未捕获到finish_reason");
                                 }
@@ -461,11 +647,12 @@ public class ProxyServiceImpl implements ProxyService {
         // 3. 根据策略结果处理请求
         ProxyResponseDTO response;
         ResponseStatus responseStatus;
+        String approvalRequestId = null;
 
         if (policyResult.isBlocked()) {
             if (policyResult.isRequireApproval()) {
                 // 需要审批，创建审批请求
-                String approvalRequestId = createApprovalRequest(agent.getId(), policyResult, request);
+                approvalRequestId = createApprovalRequest(agent.getId(), policyResult, request);
                 response = ProxyResponseDTO.pendingApproval(policyResult.getReason(), approvalRequestId);
                 responseStatus = ResponseStatus.PENDING_APPROVAL;
             } else {
@@ -487,7 +674,7 @@ public class ProxyServiceImpl implements ProxyService {
         // 4. 记录日志
         long responseTimeMs = System.currentTimeMillis() - startTime;
         boolean success = (responseStatus == ResponseStatus.SUCCESS);
-        recordLog(agent.getId(), request, response, responseStatus, responseTimeMs, policyResult, success);
+        recordLog(agent.getId(), request, response, responseStatus, responseTimeMs, policyResult, success, approvalRequestId);
 
         return response;
     }
@@ -639,23 +826,24 @@ public class ProxyServiceImpl implements ProxyService {
      */
     private String createApprovalRequest(String agentId, PolicyResult policyResult, ProxyRequestDTO request) {
         log.info("为Agent {} 创建审批请求，策略: {}", agentId, policyResult.getPolicyId());
-        
-        // 构建请求数据 JSON
+
+        // 构建请求数据 JSON（只保存原始请求信息，不包含 reason）
         Map<String, Object> requestData = MapUtil.builder(new LinkedHashMap<String, Object>())
+                .put("type", "api_call")
                 .put("targetUrl", request.getTargetUrl())
                 .put("method", request.getMethod())
                 .put("headers", request.getHeaders())
                 .put("body", request.getBody())
-                .put("reason", policyResult.getReason())
                 .build();
-        
+
         ApprovalCreateDTO createDTO = new ApprovalCreateDTO();
         createDTO.setPolicyId(policyResult.getPolicyId());
         createDTO.setAgentId(agentId);
         createDTO.setRequestData(JSONUtil.toJsonStr(requestData));
         createDTO.setExpireMinutes(60);
-        
+
         ApprovalDTO approval = approvalService.create(createDTO);
+        log.info("审批请求创建成功，ID: {}", approval.getId());
         return approval.getId();
     }
 
@@ -684,10 +872,11 @@ public class ProxyServiceImpl implements ProxyService {
      * @param responseTimeMs 响应时间（毫秒）
      * @param policyResult 策略评估结果
      * @param success 是否成功
+     * @param approvalRequestId 审批请求ID（可选）
      */
     private void recordLog(String agentId, ProxyRequestDTO request, ProxyResponseDTO response,
                            ResponseStatus responseStatus, long responseTimeMs,
-                           PolicyResult policyResult, boolean success) {
+                           PolicyResult policyResult, boolean success, String approvalRequestId) {
         try {
             AgentLogCreateDTO logDto = new AgentLogCreateDTO();
             logDto.setAgentId(agentId);
@@ -697,6 +886,13 @@ public class ProxyServiceImpl implements ProxyService {
             logDto.setRequestSummary(createRequestSummary(request, policyResult));
             logDto.setResponseStatus(responseStatus);
             logDto.setResponseTimeMs((int) responseTimeMs);
+
+            // 如果是待审批状态，保存审批请求ID
+            log.info("记录API日志 - responseStatus: {}, approvalRequestId: {}", responseStatus, approvalRequestId);
+            if (responseStatus == ResponseStatus.PENDING_APPROVAL && StrUtil.isNotBlank(approvalRequestId)) {
+                logDto.setApprovalRequestId(approvalRequestId);
+                log.info("已设置审批请求ID到API日志DTO: {}", approvalRequestId);
+            }
 
             // 记录请求头
             if (CollUtil.isNotEmpty(request.getHeaders())) {
@@ -951,11 +1147,10 @@ public class ProxyServiceImpl implements ProxyService {
     private String createLlmApprovalRequest(String agentId, PolicyResult policyResult, LlmProxyRequestDTO request) {
         log.info("为Agent {} 创建LLM审批请求，策略: {}", agentId, policyResult.getPolicyId());
 
-        // 构建请求数据 JSON
+        // 构建请求数据 JSON（只保存原始请求信息，不包含 reason）
         Map<String, Object> requestData = MapUtil.builder(new LinkedHashMap<String, Object>())
                 .put("type", "llm_call")
                 .put("body", request.getBody())
-                .put("reason", policyResult.getReason())
                 .build();
 
         ApprovalCreateDTO createDTO = new ApprovalCreateDTO();
@@ -965,6 +1160,7 @@ public class ProxyServiceImpl implements ProxyService {
         createDTO.setExpireMinutes(60);
 
         ApprovalDTO approval = approvalService.create(createDTO);
+        log.info("审批请求创建成功，ID: {}", approval.getId());
         return approval.getId();
     }
 
@@ -978,10 +1174,11 @@ public class ProxyServiceImpl implements ProxyService {
      * @param responseTimeMs 响应时间（毫秒）
      * @param policyResult 策略评估结果
      * @param success 是否成功
+     * @param approvalRequestId 审批请求ID（可选）
      */
     private void recordLlmLog(AgentDTO agent, LlmProxyRequestDTO request, ProxyResponseDTO response,
                               ResponseStatus responseStatus, long responseTimeMs,
-                              PolicyResult policyResult, boolean success) {
+                              PolicyResult policyResult, boolean success, String approvalRequestId) {
         try {
             // 构建真实的 LLM URL
             String llmUrl = agent.getLlmBaseUrl() + "/chat/completions";
@@ -994,6 +1191,13 @@ public class ProxyServiceImpl implements ProxyService {
             logDto.setRequestSummary(createLlmRequestSummary(request));
             logDto.setResponseStatus(responseStatus);
             logDto.setResponseTimeMs((int) responseTimeMs);
+
+            // 如果是待审批状态，保存审批请求ID
+            log.info("记录日志 - responseStatus: {}, approvalRequestId: {}", responseStatus, approvalRequestId);
+            if (responseStatus == ResponseStatus.PENDING_APPROVAL && StrUtil.isNotBlank(approvalRequestId)) {
+                logDto.setApprovalRequestId(approvalRequestId);
+                log.info("已设置审批请求ID到日志DTO: {}", approvalRequestId);
+            }
 
             // 提取模型信息
             String model = null;
@@ -1038,7 +1242,7 @@ public class ProxyServiceImpl implements ProxyService {
                         log.warn("从响应解析Token使用量失败");
                     }
 
-                    // 解析 finishReason - 直接从 response.getResponse() 对象中提取
+                    // 解析 finishReason 和 tool_calls - 直接从 response.getResponse() 对象中提取
                     try {
                         Object responseObj = response.getResponse();
                         log.debug("响应对象类型: {}", responseObj.getClass().getName());
@@ -1050,12 +1254,24 @@ public class ProxyServiceImpl implements ProxyService {
                                 List<?> choices = (List<?>) responseMap.get("choices");
                                 if (CollUtil.isNotEmpty(choices) && choices.get(0) instanceof Map) {
                                     Map<String, Object> firstChoice = (Map<String, Object>) choices.get(0);
+
+                                    // 提取 finish_reason
                                     if (firstChoice.containsKey("finish_reason")) {
                                         Object finishReasonObj = firstChoice.get("finish_reason");
                                         if (finishReasonObj != null) {
                                             String finishReason = finishReasonObj.toString();
                                             logDto.setFinishReason(finishReason);
                                             log.info("提取的finish_reason: {}", finishReason);
+
+                                            // 如果是 tool_calls，提取工具名称
+                                            if ("tool_calls".equals(finishReason)) {
+                                                String toolNames = extractToolNames(firstChoice);
+                                                if (StrUtil.isNotBlank(toolNames)) {
+                                                    log.info("提取的工具名称: {}", toolNames);
+                                                    // 直接设置到 toolCalls 字段
+                                                    logDto.setToolCalls(toolNames);
+                                                }
+                                            }
                                         } else {
                                             log.warn("响应中finish_reason为null");
                                         }
@@ -1080,6 +1296,16 @@ public class ProxyServiceImpl implements ProxyService {
                                         String finishReason = firstChoice.get("finish_reason").toString();
                                         logDto.setFinishReason(finishReason);
                                         log.info("从JSON提取的finish_reason: {}", finishReason);
+
+                                        // 如果是 tool_calls，提取工具名称
+                                        if ("tool_calls".equals(finishReason)) {
+                                            String toolNames = extractToolNames(firstChoice);
+                                            if (StrUtil.isNotBlank(toolNames)) {
+                                                log.info("提取的工具名称: {}", toolNames);
+                                                // 直接设置到 toolCalls 字段
+                                                logDto.setToolCalls(toolNames);
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1111,6 +1337,137 @@ public class ProxyServiceImpl implements ProxyService {
         } catch (Exception e) {
             log.error("记录LLM日志失败", e);
         }
+    }
+
+    /**
+     * 从 choice 中提取工具名称
+     *
+     * @param choice choice对象（Map格式）
+     * @return 工具名称列表（逗号分隔），如果没有则返回null
+     */
+    private String extractToolNames(Map<String, Object> choice) {
+        try {
+            // 添加调试日志：打印 choice 的所有键
+            log.info("===== 开始提取工具名称 =====");
+            log.info("choice 对象的键: {}", choice.keySet());
+            log.info("choice 对象内容: {}", JSONUtil.toJsonStr(choice));
+
+            // 非流式响应：tool_calls 在 message 中
+            if (choice.containsKey("message")) {
+                log.info("找到 message 键");
+                Map<String, Object> message = (Map<String, Object>) choice.get("message");
+                log.info("message 对象的键: {}", message.keySet());
+                log.info("message 对象内容: {}", JSONUtil.toJsonStr(message));
+
+                if (message.containsKey("tool_calls")) {
+                    log.info("找到 tool_calls 键");
+                    Object toolCallsObj = message.get("tool_calls");
+                    log.info("tool_calls 类型: {}", toolCallsObj.getClass().getName());
+                    log.info("tool_calls 内容: {}", JSONUtil.toJsonStr(toolCallsObj));
+                    String result = parseToolCallsArray(toolCallsObj);
+                    log.info("解析结果: {}", result);
+                    return result;
+                } else {
+                    log.warn("message 中没有 tool_calls 键");
+                }
+            } else {
+                log.warn("choice 中没有 message 键");
+            }
+
+            // 流式响应：tool_calls 在 delta 中
+            if (choice.containsKey("delta")) {
+                log.info("找到 delta 键");
+                Map<String, Object> delta = (Map<String, Object>) choice.get("delta");
+                log.info("delta 对象的键: {}", delta.keySet());
+                log.info("delta 对象内容: {}", JSONUtil.toJsonStr(delta));
+
+                if (delta.containsKey("tool_calls")) {
+                    log.info("找到 tool_calls 键");
+                    Object toolCallsObj = delta.get("tool_calls");
+                    log.info("tool_calls 类型: {}", toolCallsObj.getClass().getName());
+                    log.info("tool_calls 内容: {}", JSONUtil.toJsonStr(toolCallsObj));
+                    String result = parseToolCallsArray(toolCallsObj);
+                    log.info("解析结果: {}", result);
+                    return result;
+                } else {
+                    log.warn("delta 中没有 tool_calls 键");
+                }
+            } else {
+                log.warn("choice 中没有 delta 键");
+            }
+
+            log.warn("未能从 choice 中提取到工具名称");
+        } catch (Exception e) {
+            log.error("提取工具名称失败: {}", e.getMessage(), e);
+        }
+        return null;
+    }
+
+    /**
+     * 解析 tool_calls 数组，提取工具名称
+     *
+     * @param toolCallsObj tool_calls对象
+     * @return 工具名称列表（逗号分隔）
+     */
+    private String parseToolCallsArray(Object toolCallsObj) {
+        log.info("===== 开始解析 tool_calls 数组 =====");
+        log.info("toolCallsObj 类型: {}", toolCallsObj != null ? toolCallsObj.getClass().getName() : "null");
+
+        if (!(toolCallsObj instanceof List)) {
+            log.warn("toolCallsObj 不是 List 类型，返回 null");
+            return null;
+        }
+
+        List<?> toolCalls = (List<?>) toolCallsObj;
+        log.info("tool_calls 数组大小: {}", toolCalls.size());
+
+        if (CollUtil.isEmpty(toolCalls)) {
+            log.warn("tool_calls 数组为空，返回 null");
+            return null;
+        }
+
+        List<String> toolNames = new java.util.ArrayList<>();
+        for (int i = 0; i < toolCalls.size(); i++) {
+            Object toolCallObj = toolCalls.get(i);
+            log.info("处理第 {} 个 tool_call，类型: {}", i, toolCallObj != null ? toolCallObj.getClass().getName() : "null");
+
+            if (toolCallObj instanceof Map) {
+                Map<String, Object> toolCall = (Map<String, Object>) toolCallObj;
+                log.info("tool_call 的键: {}", toolCall.keySet());
+                log.info("tool_call 内容: {}", JSONUtil.toJsonStr(toolCall));
+
+                // 提取 function.name
+                if (toolCall.containsKey("function")) {
+                    log.info("找到 function 键");
+                    Object functionObj = toolCall.get("function");
+                    log.info("function 类型: {}", functionObj != null ? functionObj.getClass().getName() : "null");
+
+                    if (functionObj instanceof Map) {
+                        Map<String, Object> function = (Map<String, Object>) functionObj;
+                        log.info("function 的键: {}", function.keySet());
+                        log.info("function 内容: {}", JSONUtil.toJsonStr(function));
+
+                        if (function.containsKey("name")) {
+                            String toolName = function.get("name").toString();
+                            log.info("提取到工具名称: {}", toolName);
+                            toolNames.add(toolName);
+                        } else {
+                            log.warn("function 中没有 name 键");
+                        }
+                    } else {
+                        log.warn("function 不是 Map 类型");
+                    }
+                } else {
+                    log.warn("tool_call 中没有 function 键");
+                }
+            } else {
+                log.warn("tool_call 不是 Map 类型");
+            }
+        }
+
+        String result = CollUtil.isEmpty(toolNames) ? null : String.join(", ", toolNames);
+        log.info("最终提取的工具名称: {}", result);
+        return result;
     }
 
     /**

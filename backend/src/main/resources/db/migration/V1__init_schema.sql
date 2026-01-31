@@ -54,16 +54,20 @@ CREATE TABLE IF NOT EXISTS `agent_log` (
     `response_status` VARCHAR(20) NOT NULL COMMENT '响应状态: SUCCESS/FAILED/BLOCKED/PENDING_APPROVAL',
     `response_time_ms` INT COMMENT '响应时间(ms)',
     `finish_reason` VARCHAR(50) COMMENT '完成原因：stop/length/content_filter/function_call',
+    `tool_calls` VARCHAR(500) COMMENT '工具调用名称（多个用逗号分隔）',
     `first_token_time_ms` INT COMMENT '首token响应时间（毫秒），仅流式请求',
     `token_input` INT COMMENT '输入token数',
     `token_output` INT COMMENT '输出token数',
     `model` VARCHAR(50) COMMENT 'LLM模型',
     `cost` DECIMAL(10,6) COMMENT '成本',
     `policy_snapshot` JSON COMMENT '策略快照（JSON格式，包含id/name/action/reason）',
+    `approval_request_id` VARCHAR(32) COMMENT '审批请求ID',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY `idx_agent_id` (`agent_id`),
     KEY `idx_created_at` (`created_at`),
-    KEY `idx_finish_reason` (`finish_reason`)
+    KEY `idx_finish_reason` (`finish_reason`),
+    KEY `idx_tool_calls` (`tool_calls`),
+    KEY `idx_approval_request_id` (`approval_request_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Agent日志表';
 
 -- =====================================================

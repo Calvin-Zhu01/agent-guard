@@ -18,6 +18,13 @@ public interface ApprovalExecutor {
     ApprovalExecutionResultDTO execute(String approvalId);
 
     /**
+     * 异步执行已批准的请求
+     *
+     * @param approvalId 审批请求ID
+     */
+    void executeAsync(String approvalId);
+
+    /**
      * 检查是否配置为自动执行
      *
      * @return 是否自动执行

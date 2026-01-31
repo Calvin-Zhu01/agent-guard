@@ -54,6 +54,9 @@ public class AgentLogCreateDTO {
     @Schema(description = "完成原因：stop/length/content_filter/function_call")
     private String finishReason;
 
+    @Schema(description = "工具调用名称（多个用逗号分隔）", example = "get_weather, search_web")
+    private String toolCalls;
+
     @Schema(description = "首token响应时间（毫秒），仅流式请求")
     private Integer firstTokenTimeMs;
 
@@ -71,4 +74,7 @@ public class AgentLogCreateDTO {
 
     @Schema(description = "策略快照（触发策略时的策略信息）")
     private PolicySnapshotDTO policySnapshot;
+
+    @Schema(description = "审批请求ID（当状态为PENDING_APPROVAL时关联）")
+    private String approvalRequestId;
 }

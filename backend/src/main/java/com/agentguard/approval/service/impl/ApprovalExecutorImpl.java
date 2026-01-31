@@ -17,14 +17,21 @@ import com.agentguard.approval.mapper.ApprovalMapper;
 import com.agentguard.approval.service.ApprovalExecutor;
 import com.agentguard.common.exception.BusinessException;
 import com.agentguard.common.exception.ErrorCode;
+import com.agentguard.common.util.EncryptionUtil;
 import com.agentguard.proxy.dto.ProxyRequestDTO;
 import com.agentguard.proxy.dto.ProxyResponseDTO;
 import com.agentguard.proxy.service.ProxyService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -43,6 +50,8 @@ public class ApprovalExecutorImpl implements ApprovalExecutor {
     private final AgentMapper agentMapper;
     private final ProxyService proxyService;
     private final AlertService alertService;
+    private final RestTemplate restTemplate;
+    private final EncryptionUtil encryptionUtil;
 
     @Value("${approval.auto-execute:true}")
     private boolean autoExecuteEnabled;
@@ -77,20 +86,23 @@ public class ApprovalExecutorImpl implements ApprovalExecutor {
         approvalMapper.updateById(approval);
 
         try {
-            // 5. 解析原始请求数据
-            ProxyRequestDTO proxyRequest = parseRequestData(approval);
+            // 5. 获取Agent信息
+            AgentDO agent = agentMapper.selectById(approval.getAgentId());
+            if (ObjectUtil.isNull(agent)) {
+                throw new BusinessException(ErrorCode.AGENT_NOT_FOUND);
+            }
 
-            // 6. 执行原始请求（跳过策略检查，直接执行）
-            ProxyResponseDTO response = executeRequest(proxyRequest);
+            // 6. 解析请求数据并执行
+            Map<String, Object> result = executeApprovalRequest(agent, approval);
 
             // 7. 更新执行结果
             approval.setExecutionStatus(ExecutionStatus.SUCCESS);
-            approval.setExecutionResult(JSONUtil.toJsonStr(response));
+            approval.setExecutionResult(JSONUtil.toJsonStr(result));
             approval.setExecutedAt(LocalDateTime.now());
             approvalMapper.updateById(approval);
 
             log.info("审批请求执行成功: approvalId={}", approvalId);
-            return ApprovalExecutionResultDTO.success(approvalId, response);
+            return ApprovalExecutionResultDTO.success(approvalId, result);
 
         } catch (Exception e) {
             log.error("审批请求执行失败: approvalId={}, error={}", approvalId, e.getMessage(), e);
@@ -105,6 +117,18 @@ public class ApprovalExecutorImpl implements ApprovalExecutor {
             sendExecutionFailureNotification(approvalId, e.getMessage());
 
             return ApprovalExecutionResultDTO.failed(approvalId, e.getMessage());
+        }
+    }
+
+    @Override
+    @Async
+    public void executeAsync(String approvalId) {
+        log.info("异步执行审批请求: approvalId={}", approvalId);
+        try {
+            execute(approvalId);
+        } catch (Exception e) {
+            log.error("异步执行审批请求失败: approvalId={}, error={}", approvalId, e.getMessage(), e);
+            // 异常已在 execute 方法中处理，这里只记录日志
         }
     }
 
@@ -178,13 +202,14 @@ public class ApprovalExecutorImpl implements ApprovalExecutor {
     }
 
     /**
-     * 解析请求数据
+     * 执行审批请求（根据类型分发）
      *
+     * @param agent Agent信息
      * @param approval 审批请求
-     * @return 代理请求DTO
+     * @return 执行结果
      */
     @SuppressWarnings("unchecked")
-    private ProxyRequestDTO parseRequestData(ApprovalRequestDO approval) {
+    private Map<String, Object> executeApprovalRequest(AgentDO agent, ApprovalRequestDO approval) {
         String requestDataJson = approval.getRequestData();
         if (StrUtil.isBlank(requestDataJson)) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "请求数据为空");
@@ -192,38 +217,218 @@ public class ApprovalExecutorImpl implements ApprovalExecutor {
 
         Map<String, Object> requestData = JSONUtil.toBean(requestDataJson, Map.class);
 
-        // 获取 Agent 的 API Key
-        AgentDO agent = agentMapper.selectById(approval.getAgentId());
-        if (ObjectUtil.isNull(agent)) {
-            throw new BusinessException(ErrorCode.AGENT_NOT_FOUND);
+        // 检查请求类型
+        String type = (String) requestData.get("type");
+        if (StrUtil.isBlank(type)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "请求类型为空");
         }
 
-        return ProxyRequestDTO.builder()
-                .apiKey(agent.getApiKey())
-                .targetUrl((String) requestData.get("targetUrl"))
-                .method((String) requestData.getOrDefault("method", "POST"))
-                .headers((Map<String, String>) requestData.get("headers"))
-                .body((Map<String, Object>) requestData.get("body"))
-                .build();
+        return switch (type) {
+            // TODO: LLM 审批功能暂时注释，后期再详细设计
+            // case "llm_call" -> executeLlmApprovalRequest(agent, requestData);
+            case "llm_call" -> throw new BusinessException(ErrorCode.BAD_REQUEST, "LLM 审批功能暂未开放");
+            case "api_call" -> executeApiApprovalRequest(agent, requestData);
+            default -> throw new BusinessException(ErrorCode.BAD_REQUEST, "不支持的请求类型: " + type);
+        };
     }
 
     /**
-     * 执行请求（MVP阶段返回模拟响应）
+     * 执行 LLM 审批请求
      *
-     * @param request 代理请求
-     * @return 代理响应
+     * @param agent Agent信息
+     * @param requestData 请求数据
+     * @return LLM响应
      */
-    private ProxyResponseDTO executeRequest(ProxyRequestDTO request) {
-        // MVP阶段：返回模拟响应
-        // 实际生产环境中，这里应该调用实际的目标API
-        log.info("执行已批准的请求: targetUrl={}, method={}", request.getTargetUrl(), request.getMethod());
+    @SuppressWarnings("unchecked")
+    // TODO: LLM 审批功能暂时注释，后期再详细设计
+    // /**
+    //  * 执行 LLM 审批请求
+    //  *
+    //  * @param agent Agent信息
+    //  * @param requestData 请求数据
+    //  * @return LLM响应
+    //  */
+    // @SuppressWarnings("unchecked")
+    private Map<String, Object> executeLlmApprovalRequest(AgentDO agent, Map<String, Object> requestData) {
+        // 提取LLM请求体
+        Object bodyObj = requestData.get("body");
+        if (bodyObj == null) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "LLM请求体为空");
+        }
 
-        return ProxyResponseDTO.success(Map.of(
-                "success", true,
-                "message", "Approved request executed successfully",
-                "targetUrl", request.getTargetUrl(),
-                "timestamp", System.currentTimeMillis()
-        ));
+        Map<String, Object> llmRequestBody = (Map<String, Object>) bodyObj;
+        return executeLlmRequest(agent, llmRequestBody);
+    }
+
+    /**
+     * 执行 API 审批请求
+     *
+     * @param agent Agent信息
+     * @param requestData 请求数据
+     * @return API响应
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> executeApiApprovalRequest(AgentDO agent, Map<String, Object> requestData) {
+        String targetUrl = (String) requestData.get("targetUrl");
+        String method = (String) requestData.get("method");
+        Map<String, String> headers = (Map<String, String>) requestData.get("headers");
+        Object body = requestData.get("body");
+
+        if (StrUtil.isBlank(targetUrl)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "目标URL为空");
+        }
+
+        log.info("执行审批后的API请求: url={}, method={}", targetUrl, method);
+
+        // 构建请求头
+        HttpHeaders httpHeaders = new HttpHeaders();
+        if (headers != null) {
+            headers.forEach(httpHeaders::set);
+        }
+
+        // 构建请求体
+        String requestBodyJson = body != null ? JSONUtil.toJsonStr(body) : null;
+        HttpEntity<String> entity = new HttpEntity<>(requestBodyJson, httpHeaders);
+
+        // 发起请求
+        HttpMethod httpMethod = HttpMethod.valueOf(method.toUpperCase());
+        ResponseEntity<String> response = restTemplate.exchange(
+                targetUrl,
+                httpMethod,
+                entity,
+                String.class
+        );
+
+        // 构建响应
+        Map<String, Object> result = new java.util.HashMap<>();
+        result.put("statusCode", response.getStatusCode().value());
+        result.put("headers", response.getHeaders().toSingleValueMap());
+        result.put("body", response.getBody());
+
+        return result;
+    }
+
+    /**
+     * 解析请求数据（已废弃，使用 executeApprovalRequest 代替）
+     *
+     * @param approval 审批请求
+     * @return LLM请求体
+     * @deprecated 使用 {@link #executeApprovalRequest(AgentDO, ApprovalRequestDO)} 代替
+     */
+    @Deprecated
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> parseLlmRequestBody(ApprovalRequestDO approval) {
+        String requestDataJson = approval.getRequestData();
+        if (StrUtil.isBlank(requestDataJson)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "请求数据为空");
+        }
+
+        Map<String, Object> requestData = JSONUtil.toBean(requestDataJson, Map.class);
+
+        // 检查请求类型
+        String type = (String) requestData.get("type");
+        if (!"llm_call".equals(type)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "不支持的请求类型: " + type);
+        }
+
+        // 提取LLM请求体
+        Object bodyObj = requestData.get("body");
+        if (bodyObj == null) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "LLM请求体为空");
+        }
+
+        return (Map<String, Object>) bodyObj;
+    }
+
+    /**
+     * 执行LLM请求（绕过策略检查，直接调用LLM API）
+     *
+     * @param agent Agent信息
+     * @param requestBody LLM请求体
+     * @return LLM响应
+     */
+    // TODO: LLM 审批功能暂时注释，后期再详细设计
+    // /**
+    //  * 执行LLM请求（绕过策略检查，直接调用LLM API）
+    //  *
+    //  * @param agent Agent信息
+    //  * @param requestBody LLM请求体
+    //  * @return LLM响应
+    //  */
+    private Map<String, Object> executeLlmRequest(AgentDO agent, Map<String, Object> requestBody) {
+        // 检查LLM配置
+        if (StrUtil.isBlank(agent.getLlmApiKey()) || StrUtil.isBlank(agent.getLlmBaseUrl())) {
+            throw new BusinessException(ErrorCode.AGENT_LLM_CONFIG_INCOMPLETE);
+        }
+
+        // 检查是否为流式请求
+        Boolean stream = (Boolean) requestBody.get("stream");
+        boolean isStreamRequest = stream != null && stream;
+
+        if (isStreamRequest) {
+            // 流式请求：需要收集完整响应
+            return executeLlmStreamRequest(agent, requestBody);
+        } else {
+            // 非流式请求：直接返回
+            return executeLlmNonStreamRequest(agent, requestBody);
+        }
+    }
+
+    // /**
+    //  * 执行非流式LLM请求
+    //  *
+    //  * @param agent Agent信息
+    //  * @param requestBody LLM请求体
+    //  * @return LLM响应
+    //  */
+    // @SuppressWarnings("unchecked")
+    private Map<String, Object> executeLlmNonStreamRequest(AgentDO agent, Map<String, Object> requestBody) {
+        // 确保stream=false
+        requestBody.put("stream", false);
+
+        // 解密 LLM API Key
+        String decryptedApiKey = encryptionUtil.decrypt(agent.getLlmApiKey());
+
+        // 构建请求头
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "Bearer " + decryptedApiKey);
+        headers.set("Content-Type", "application/json");
+
+        // 构建请求体
+        String requestBodyJson = JSONUtil.toJsonStr(requestBody);
+        HttpEntity<String> entity = new HttpEntity<>(requestBodyJson, headers);
+
+        // 发起请求
+        String llmUrl = agent.getLlmBaseUrl() + "/chat/completions";
+        log.info("执行审批后的LLM请求: url={}, model={}", llmUrl, requestBody.get("model"));
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                llmUrl,
+                HttpMethod.POST,
+                entity,
+                String.class
+        );
+
+        // 解析响应
+        return JSONUtil.toBean(response.getBody(), Map.class);
+    }
+
+    // /**
+    //  * 执行流式LLM请求并收集完整响应
+    //  *
+    //  * @param agent Agent信息
+    //  * @param requestBody LLM请求体
+    //  * @return 收集后的完整响应（OpenAI标准格式）
+    //  */
+    // @SuppressWarnings("unchecked")
+    private Map<String, Object> executeLlmStreamRequest(AgentDO agent, Map<String, Object> requestBody) {
+        log.info("执行流式LLM请求并收集完整响应");
+
+        // 将stream设置为false，直接获取完整响应
+        // 这样可以避免处理SSE流的复杂性
+        requestBody.put("stream", false);
+
+        return executeLlmNonStreamRequest(agent, requestBody);
     }
 
     /**

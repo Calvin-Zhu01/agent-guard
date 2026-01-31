@@ -17,6 +17,7 @@ import com.agentguard.policy.enums.PolicyType;
 import com.agentguard.policy.mapper.PolicyMapper;
 import com.agentguard.policy.service.PolicyService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
@@ -143,14 +144,17 @@ public class PolicyServiceImpl implements PolicyService {
     @Override
     @Transactional
     public void enable(String id) {
+        // 检查策略是否存在
         PolicyDO policyDO = policyMapper.selectById(id);
         if (ObjectUtil.isNull(policyDO)) {
             throw new BusinessException(ErrorCode.POLICY_NOT_FOUND);
         }
-        policyDO.setEnabled(true);
-        policyDO.setUpdatedAt(LocalDateTime.now());
-        policyMapper.updateById(policyDO);
-        
+
+        LambdaUpdateWrapper<PolicyDO> updateWrapper = new LambdaUpdateWrapper<>();
+        updateWrapper.eq(PolicyDO::getId, id)
+                     .set(PolicyDO::getEnabled, true);
+        policyMapper.update(null, updateWrapper);
+
         // 刷新策略缓存
         policyEngine.refreshPolicies();
     }
@@ -158,14 +162,17 @@ public class PolicyServiceImpl implements PolicyService {
     @Override
     @Transactional
     public void disable(String id) {
+        // 检查策略是否存在
         PolicyDO policyDO = policyMapper.selectById(id);
         if (ObjectUtil.isNull(policyDO)) {
             throw new BusinessException(ErrorCode.POLICY_NOT_FOUND);
         }
-        policyDO.setEnabled(false);
-        policyDO.setUpdatedAt(LocalDateTime.now());
-        policyMapper.updateById(policyDO);
-        
+
+        LambdaUpdateWrapper<PolicyDO> updateWrapper = new LambdaUpdateWrapper<>();
+        updateWrapper.eq(PolicyDO::getId, id)
+                     .set(PolicyDO::getEnabled, false);
+        policyMapper.update(null, updateWrapper);
+
         // 刷新策略缓存
         policyEngine.refreshPolicies();
     }

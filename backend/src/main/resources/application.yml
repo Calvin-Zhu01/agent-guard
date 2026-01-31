@@ -90,6 +90,11 @@ alert:
     health:
       cron: ${ALERT_SCHEDULER_HEALTH_CRON:0 * * * * ?}
 
+# 审批配置
+approval:
+  # 审批通过后是否自动执行原始请求（默认 true）
+  auto-execute: ${APPROVAL_AUTO_EXECUTE:true}
+
 # 代理配置
 agentguard:
   proxy:

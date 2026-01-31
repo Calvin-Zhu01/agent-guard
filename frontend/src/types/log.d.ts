@@ -8,7 +8,7 @@
 export type RequestType = 'API_CALL' | 'LLM_CALL'
 
 /** 响应状态 */
-export type ResponseStatus = 'SUCCESS' | 'FAILED' | 'BLOCKED' | 'PENDING_APPROVAL'
+export type ResponseStatus = 'SUCCESS' | 'FAILED' | 'BLOCKED' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED'
 
 /** 策略类型 */
 export type PolicyType = 'ACCESS_CONTROL' | 'RATE_LIMIT' | 'APPROVAL'
@@ -42,6 +42,7 @@ export interface AgentLog {
   responseStatus: ResponseStatus
   responseTimeMs: number
   finishReason: string
+  toolCalls: string
   firstTokenTimeMs: number
   tokenInput: number
   tokenOutput: number

@@ -29,7 +29,9 @@ const responseStatusOptions = [
   { label: '成功', value: 'SUCCESS' },
   { label: '失败', value: 'FAILED' },
   { label: '已拦截', value: 'BLOCKED' },
-  { label: '待审批', value: 'PENDING_APPROVAL' }
+  { label: '待审批', value: 'PENDING_APPROVAL' },
+  { label: '已批准', value: 'APPROVED' },
+  { label: '已拒绝', value: 'REJECTED' }
 ]
 
 const policyActionLabels: Record<PolicyAction, string> = {
@@ -201,9 +203,13 @@ function getStatusType(status: ResponseStatus): 'success' | 'warning' | 'danger'
   switch (status) {
     case 'SUCCESS':
       return 'success'
+    case 'APPROVED':
+      return 'success'
     case 'FAILED':
       return 'warning'
     case 'BLOCKED':
+      return 'danger'
+    case 'REJECTED':
       return 'danger'
     case 'PENDING_APPROVAL':
       return 'info'
@@ -216,10 +222,14 @@ function getStatusLabel(status: ResponseStatus): string {
   switch (status) {
     case 'SUCCESS':
       return '成功'
+    case 'APPROVED':
+      return '已批准'
     case 'FAILED':
       return '失败'
     case 'BLOCKED':
       return '已拦截'
+    case 'REJECTED':
+      return '已拒绝'
     case 'PENDING_APPROVAL':
       return '待审批'
     default:
@@ -389,7 +399,7 @@ watch(activeTab, () => {
               </template>
             </el-table-column>
             <el-table-column prop="agentName" label="Agent" width="150" />
-            <el-table-column prop="model" label="模型" min-width="200" show-overflow-tooltip />
+            <el-table-column prop="model" label="模型" min-width="100" show-overflow-tooltip />
             <el-table-column label="用时/首字" width="140">
               <template #default="{ row }">
                 <div class="time-cell">
@@ -429,7 +439,13 @@ watch(activeTab, () => {
                 <span v-else class="text-muted">-</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="80">
+            <el-table-column label="工具名称" width="150" show-overflow-tooltip>
+              <template #default="{ row }">
+                <span v-if="row.toolCalls" class="tool-calls">{{ row.toolCalls }}</span>
+                <span v-else class="text-muted">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="100" fixed="right">
               <template #default="{ row }">
                 <el-button type="primary" link :icon="View" @click="handleViewDetail(row)">
                   详情
@@ -752,6 +768,11 @@ watch(activeTab, () => {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.tool-calls {
+  color: var(--el-color-primary);
+  font-size: 13px;
 }
 
 .detail-container {

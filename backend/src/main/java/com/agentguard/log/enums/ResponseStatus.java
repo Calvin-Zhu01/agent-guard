@@ -24,7 +24,13 @@ public enum ResponseStatus {
     BLOCKED("BLOCKED", "被拦截"),
 
     /** 待审批 */
-    PENDING_APPROVAL("PENDING_APPROVAL", "待审批");
+    PENDING_APPROVAL("PENDING_APPROVAL", "待审批"),
+
+    /** 审批通过 */
+    APPROVED("APPROVED", "审批通过"),
+
+    /** 审批拒绝 */
+    REJECTED("REJECTED", "审批拒绝");
 
     @EnumValue
     @JsonValue

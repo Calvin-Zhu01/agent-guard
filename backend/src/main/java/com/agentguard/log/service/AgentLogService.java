@@ -40,4 +40,12 @@ public interface AgentLogService {
      * @return 分页结果
      */
     IPage<AgentLogDTO> page(Page<AgentLogDTO> page, String agentId, ResponseStatus responseStatus, RequestType requestType);
+
+    /**
+     * 根据审批请求ID更新日志状态
+     *
+     * @param approvalRequestId 审批请求ID
+     * @param newStatus 新的响应状态
+     */
+    void updateStatusByApprovalRequestId(String approvalRequestId, ResponseStatus newStatus);
 }

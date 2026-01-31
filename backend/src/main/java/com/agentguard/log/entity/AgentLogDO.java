@@ -56,6 +56,9 @@ public class AgentLogDO {
     /** 完成原因：stop/length/content_filter/function_call */
     private String finishReason;
 
+    /** 工具调用名称（多个用逗号分隔） */
+    private String toolCalls;
+
     /** 首token响应时间（毫秒），仅流式请求 */
     private Integer firstTokenTimeMs;
 
@@ -74,6 +77,9 @@ public class AgentLogDO {
     /** 策略快照（触发策略时的策略信息） */
     @TableField(typeHandler = JacksonTypeHandler.class)
     private PolicySnapshotDTO policySnapshot;
+
+    /** 审批请求ID（当状态为PENDING_APPROVAL时关联） */
+    private String approvalRequestId;
 
     /** 创建时间 */
     private LocalDateTime createdAt;

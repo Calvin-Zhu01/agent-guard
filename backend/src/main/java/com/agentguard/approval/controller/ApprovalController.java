@@ -1,6 +1,8 @@
 package com.agentguard.approval.controller;
 
+import com.agentguard.approval.dto.ApprovalActionDTO;
 import com.agentguard.approval.dto.ApprovalDTO;
+import com.agentguard.approval.dto.ApprovalStatusDTO;
 import com.agentguard.approval.enums.ApprovalStatus;
 import com.agentguard.approval.service.ApprovalService;
 import com.agentguard.common.response.Result;
@@ -46,8 +48,9 @@ public class ApprovalController {
     @PostMapping("/{id}/approve")
     public Result<ApprovalDTO> approve(
             @PathVariable String id,
-            @Parameter(description = "审批人ID") @RequestParam(required = false) String approverId,
-            @Parameter(description = "审批备注") @RequestParam(required = false) String remark) {
+            @RequestBody(required = false) ApprovalActionDTO actionDTO) {
+        String approverId = actionDTO != null ? actionDTO.getApproverId() : null;
+        String remark = actionDTO != null ? actionDTO.getRemark() : null;
         return Result.success(approvalService.approve(id, approverId, remark));
     }
 
@@ -55,8 +58,9 @@ public class ApprovalController {
     @PostMapping("/{id}/reject")
     public Result<ApprovalDTO> reject(
             @PathVariable String id,
-            @Parameter(description = "审批人ID") @RequestParam(required = false) String approverId,
-            @Parameter(description = "审批备注") @RequestParam(required = false) String remark) {
+            @RequestBody(required = false) ApprovalActionDTO actionDTO) {
+        String approverId = actionDTO != null ? actionDTO.getApproverId() : null;
+        String remark = actionDTO != null ? actionDTO.getRemark() : null;
         return Result.success(approvalService.reject(id, approverId, remark));
     }
 
@@ -64,5 +68,14 @@ public class ApprovalController {
     @GetMapping("/pending/count")
     public Result<Long> getPendingCount() {
         return Result.success(approvalService.getPendingCount());
+    }
+
+    @Operation(
+            summary = "查询审批状态（用于客户端SDK轮询）",
+            description = "返回审批状态，当审批通过时返回执行结果，当审批拒绝时返回拒绝原因"
+    )
+    @GetMapping("/{id}/status")
+    public Result<ApprovalStatusDTO> getStatus(@PathVariable String id) {
+        return Result.success(approvalService.getStatus(id));
     }
 }

@@ -2,6 +2,7 @@ package com.agentguard.approval.service;
 
 import com.agentguard.approval.dto.ApprovalCreateDTO;
 import com.agentguard.approval.dto.ApprovalDTO;
+import com.agentguard.approval.dto.ApprovalStatusDTO;
 import com.agentguard.approval.enums.ApprovalStatus;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -71,4 +72,14 @@ public interface ApprovalService {
      * @return 待审批数量
      */
     long getPendingCount();
+
+    /**
+     * 获取审批状态（用于客户端SDK轮询）
+     * 当审批通过时，返回执行结果
+     * 当审批拒绝时，返回拒绝原因
+     *
+     * @param id 审批请求ID
+     * @return 审批状态信息
+     */
+    ApprovalStatusDTO getStatus(String id);
 }
