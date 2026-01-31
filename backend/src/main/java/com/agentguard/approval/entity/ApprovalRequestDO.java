@@ -29,6 +29,9 @@ public class ApprovalRequestDO {
     /** 请求数据（JSON格式） */
     private String requestData;
 
+    /** 申请理由 */
+    private String applicationReason;
+
     /** 审批状态 */
     private ApprovalStatus status;
 

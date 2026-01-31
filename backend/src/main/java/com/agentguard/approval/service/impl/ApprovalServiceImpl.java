@@ -214,6 +214,34 @@ public class ApprovalServiceImpl implements ApprovalService {
         return statusDTO;
     }
 
+    @Override
+    @Transactional
+    public ApprovalDTO submitReason(String id, String reason) {
+        ApprovalRequestDO approvalDO = approvalMapper.selectById(id);
+        if (ObjectUtil.isNull(approvalDO)) {
+            throw new BusinessException(ErrorCode.APPROVAL_NOT_FOUND);
+        }
+
+        // 只有待审批状态才能提交理由
+        if (approvalDO.getStatus() != ApprovalStatus.PENDING) {
+            throw new BusinessException(ErrorCode.APPROVAL_ALREADY_PROCESSED);
+        }
+
+        // 检查是否已过期
+        if (LocalDateTime.now().isAfter(approvalDO.getExpiresAt())) {
+            approvalDO.setStatus(ApprovalStatus.EXPIRED);
+            approvalMapper.updateById(approvalDO);
+            throw new BusinessException(ErrorCode.APPROVAL_EXPIRED);
+        }
+
+        // 更新申请理由
+        approvalDO.setApplicationReason(reason);
+        approvalMapper.updateById(approvalDO);
+
+        log.info("审批请求 {} 已提交申请理由", id);
+        return toDTO(approvalDO);
+    }
+
     /**
      * 获取待处理的审批请求
      *

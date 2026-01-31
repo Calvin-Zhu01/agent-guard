@@ -83,4 +83,13 @@ public interface ApprovalService {
      * @return 审批状态信息
      */
     ApprovalStatusDTO getStatus(String id);
+
+    /**
+     * 提交审批申请理由
+     *
+     * @param id 审批请求ID
+     * @param reason 申请理由
+     * @return 审批请求信息
+     */
+    ApprovalDTO submitReason(String id, String reason);
 }

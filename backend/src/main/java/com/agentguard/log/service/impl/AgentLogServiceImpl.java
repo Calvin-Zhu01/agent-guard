@@ -155,4 +155,18 @@ public class AgentLogServiceImpl implements AgentLogService {
 
         agentLogMapper.update(null, wrapper);
     }
+
+    @Override
+    @Transactional
+    public void updateResponseBodyByApprovalRequestId(String approvalRequestId, String responseBody) {
+        if (StrUtil.isBlank(approvalRequestId)) {
+            return;
+        }
+
+        LambdaUpdateWrapper<AgentLogDO> wrapper = new LambdaUpdateWrapper<>();
+        wrapper.eq(AgentLogDO::getApprovalRequestId, approvalRequestId)
+               .set(AgentLogDO::getResponseBody, responseBody);
+
+        agentLogMapper.update(null, wrapper);
+    }
 }

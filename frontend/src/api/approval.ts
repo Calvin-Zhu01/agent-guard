@@ -34,3 +34,10 @@ export function approveApproval(id: string, data?: ApprovalActionDTO): Promise<A
 export function rejectApproval(id: string, data?: ApprovalActionDTO): Promise<Approval> {
   return request.post(`/approvals/${id}/reject`, data)
 }
+
+/**
+ * 提交审批申请理由
+ */
+export function submitApprovalReason(id: string, reason: string): Promise<Approval> {
+  return request.post(`/approvals/${id}/reason`, { reason })
+}

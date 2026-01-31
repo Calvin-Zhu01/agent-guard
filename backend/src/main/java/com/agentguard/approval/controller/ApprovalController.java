@@ -2,6 +2,7 @@ package com.agentguard.approval.controller;
 
 import com.agentguard.approval.dto.ApprovalActionDTO;
 import com.agentguard.approval.dto.ApprovalDTO;
+import com.agentguard.approval.dto.ApprovalReasonDTO;
 import com.agentguard.approval.dto.ApprovalStatusDTO;
 import com.agentguard.approval.enums.ApprovalStatus;
 import com.agentguard.approval.service.ApprovalService;
@@ -13,6 +14,8 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+
+import jakarta.validation.Valid;
 
 /**
  * 审批管理控制器
@@ -78,5 +81,16 @@ public class ApprovalController {
     @GetMapping("/{id}/status")
     public Result<ApprovalStatusDTO> getStatus(@PathVariable String id) {
         return Result.success(approvalService.getStatus(id));
+    }
+
+    @Operation(
+            summary = "提交审批申请理由",
+            description = "用户提交审批申请理由，帮助审批人员了解申请原因"
+    )
+    @PostMapping("/{id}/reason")
+    public Result<ApprovalDTO> submitReason(
+            @PathVariable String id,
+            @Valid @RequestBody ApprovalReasonDTO reasonDTO) {
+        return Result.success(approvalService.submitReason(id, reasonDTO.getReason()));
     }
 }

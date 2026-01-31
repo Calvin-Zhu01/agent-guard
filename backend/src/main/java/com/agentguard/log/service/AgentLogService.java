@@ -48,4 +48,12 @@ public interface AgentLogService {
      * @param newStatus 新的响应状态
      */
     void updateStatusByApprovalRequestId(String approvalRequestId, ResponseStatus newStatus);
+
+    /**
+     * 根据审批请求ID更新日志响应体
+     *
+     * @param approvalRequestId 审批请求ID
+     * @param responseBody 响应体（JSON格式）
+     */
+    void updateResponseBodyByApprovalRequestId(String approvalRequestId, String responseBody);
 }

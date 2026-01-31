@@ -35,6 +35,9 @@ public class ApprovalDTO {
     @Schema(description = "请求数据（JSON格式）")
     private String requestData;
 
+    @Schema(description = "申请理由")
+    private String applicationReason;
+
     @Schema(description = "审批状态")
     private ApprovalStatus status;
 

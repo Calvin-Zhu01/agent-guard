@@ -15,6 +15,7 @@ export interface Approval {
   agentId: string
   agentName: string
   requestData: string
+  applicationReason: string
   status: ApprovalStatus
   approverId: string
   approvedAt: string

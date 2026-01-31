@@ -118,6 +118,7 @@ CREATE TABLE IF NOT EXISTS `approval_request` (
     `policy_id` VARCHAR(36) NOT NULL COMMENT '策略ID',
     `agent_id` VARCHAR(36) NOT NULL COMMENT 'AgentID',
     `request_data` JSON NOT NULL COMMENT '请求数据',
+    `application_reason` TEXT COMMENT '申请理由',
     `status` VARCHAR(20) NOT NULL DEFAULT 'PENDING' COMMENT '状态: PENDING/APPROVED/REJECTED/EXPIRED',
     `approver_id` VARCHAR(36) COMMENT '审批人ID',
     `approved_at` DATETIME COMMENT '审批时间',

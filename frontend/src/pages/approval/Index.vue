@@ -311,12 +311,26 @@ onMounted(() => {
           <el-descriptions-item label="处理时间" v-if="currentApproval.approvedAt">
             {{ currentApproval.approvedAt }}
           </el-descriptions-item>
-          <el-descriptions-item label="备注" :span="2" v-if="currentApproval.remark">
-            {{ currentApproval.remark }}
-          </el-descriptions-item>
         </el-descriptions>
 
-        <div class="request-data-section">
+        <!-- 申请理由区域 -->
+        <div class="detail-section">
+          <h4>申请理由</h4>
+          <div class="reason-content" :class="{ 'empty-content': !currentApproval.applicationReason }">
+            {{ currentApproval.applicationReason || '等待提交中...' }}
+          </div>
+        </div>
+
+        <!-- 审批备注区域 -->
+        <div class="detail-section" v-if="currentApproval.remark">
+          <h4>审批备注</h4>
+          <div class="remark-content">
+            {{ currentApproval.remark }}
+          </div>
+        </div>
+
+        <!-- 请求数据区域 -->
+        <div class="detail-section">
           <h4>请求数据</h4>
           <el-input
             type="textarea"
@@ -357,13 +371,45 @@ onMounted(() => {
   align-items: center;
 }
 
-.request-data-section {
+.detail-section {
   margin-top: 20px;
 }
 
-.request-data-section h4 {
+.detail-section h4 {
   margin-bottom: 10px;
   color: #303133;
   font-weight: 500;
+  font-size: 14px;
+}
+
+.reason-content,
+.remark-content {
+  padding: 12px;
+  background-color: #f5f7fa;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  color: #606266;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.reason-content {
+  background-color: #f0f9ff;
+  border-color: #b3d8ff;
+}
+
+.reason-content.empty-content {
+  background-color: #f5f7fa;
+  border-color: #dcdfe6;
+  color: #909399;
+  text-align: center;
+}
+
+.remark-content {
+  background-color: #fef0f0;
+  border-color: #fbc4c4;
 }
 </style>

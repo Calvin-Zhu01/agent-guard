@@ -52,6 +52,7 @@ public class ApprovalExecutorImpl implements ApprovalExecutor {
     private final AlertService alertService;
     private final RestTemplate restTemplate;
     private final EncryptionUtil encryptionUtil;
+    private final com.agentguard.log.service.AgentLogService agentLogService;
 
     @Value("${approval.auto-execute:true}")
     private boolean autoExecuteEnabled;
@@ -96,10 +97,20 @@ public class ApprovalExecutorImpl implements ApprovalExecutor {
             Map<String, Object> result = executeApprovalRequest(agent, approval);
 
             // 7. 更新执行结果
+            String executionResultJson = JSONUtil.toJsonStr(result);
             approval.setExecutionStatus(ExecutionStatus.SUCCESS);
-            approval.setExecutionResult(JSONUtil.toJsonStr(result));
+            approval.setExecutionResult(executionResultJson);
             approval.setExecutedAt(LocalDateTime.now());
             approvalMapper.updateById(approval);
+
+            // 8. 更新关联的日志响应体（只保存 body 部分）
+            try {
+                Object bodyContent = result.get("body");
+                String responseBodyJson = bodyContent != null ? JSONUtil.toJsonStr(bodyContent) : null;
+                agentLogService.updateResponseBodyByApprovalRequestId(approvalId, responseBodyJson);
+            } catch (Exception e) {
+                log.error("更新日志响应体失败: approvalId={}, error={}", approvalId, e.getMessage(), e);
+            }
 
             log.info("审批请求执行成功: approvalId={}", approvalId);
             return ApprovalExecutionResultDTO.success(approvalId, result);
@@ -303,7 +314,22 @@ public class ApprovalExecutorImpl implements ApprovalExecutor {
         Map<String, Object> result = new java.util.HashMap<>();
         result.put("statusCode", response.getStatusCode().value());
         result.put("headers", response.getHeaders().toSingleValueMap());
-        result.put("body", response.getBody());
+
+        // 解析响应体为对象，避免二次序列化导致的转义问题
+        String responseBody = response.getBody();
+        if (StrUtil.isNotBlank(responseBody)) {
+            try {
+                // 尝试解析为 JSON 对象
+                Object bodyObj = JSONUtil.parse(responseBody);
+                result.put("body", bodyObj);
+            } catch (Exception e) {
+                // 如果解析失败，说明不是 JSON 格式，直接存储字符串
+                log.warn("响应体不是有效的 JSON 格式，直接存储为字符串: {}", e.getMessage());
+                result.put("body", responseBody);
+            }
+        } else {
+            result.put("body", null);
+        }
 
         return result;
     }
