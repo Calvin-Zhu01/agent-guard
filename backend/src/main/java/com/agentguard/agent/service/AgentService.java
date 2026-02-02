@@ -3,8 +3,11 @@ package com.agentguard.agent.service;
 import com.agentguard.agent.dto.AgentCreateDTO;
 import com.agentguard.agent.dto.AgentDTO;
 import com.agentguard.agent.dto.AgentUpdateDTO;
+import com.agentguard.agent.dto.LlmTestConnectionDTO;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+
+import java.util.Map;
 
 /**
  * Agent 服务接口
@@ -32,4 +35,12 @@ public interface AgentService {
      * @return Agent信息（包含真实的LLM API Key）
      */
     AgentDTO getByApiKeyForProxy(String apiKey);
+
+    /**
+     * 测试 LLM 连接配置
+     *
+     * @param dto 测试连接请求参数
+     * @return 测试结果（success: true/false, message: 提示信息）
+     */
+    Map<String, Object> testLlmConnection(LlmTestConnectionDTO dto);
 }

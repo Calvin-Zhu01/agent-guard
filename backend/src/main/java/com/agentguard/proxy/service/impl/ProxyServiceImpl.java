@@ -100,12 +100,12 @@ public class ProxyServiceImpl implements ProxyService {
         AgentDTO agent = validateApiKey(agKey);
 
         // 2. 检查 LLM 配置是否完整
-        if (StrUtil.isBlank(agent.getLlmApiKey()) || StrUtil.isBlank(agent.getLlmBaseUrl())) {
+        if (StrUtil.isBlank(agent.getLlmApiKey()) || StrUtil.isBlank(agent.getLlmBaseUrl()) || StrUtil.isBlank(agent.getLlmModel())) {
             throw new BusinessException(ErrorCode.AGENT_LLM_CONFIG_INCOMPLETE);
         }
 
         // 3. 策略评估（针对 LLM 调用）
-        String llmUrl = agent.getLlmBaseUrl() + "/chat/completions";
+        String llmUrl = buildLlmUrl(agent.getLlmBaseUrl());
         PolicyResult policyResult = policyEngine.evaluate(
                 llmUrl,
                 "POST",
@@ -165,12 +165,12 @@ public class ProxyServiceImpl implements ProxyService {
         AgentDTO agent = validateApiKey(agKey);
 
         // 2. 检查 LLM 配置是否完整
-        if (StrUtil.isBlank(agent.getLlmApiKey()) || StrUtil.isBlank(agent.getLlmBaseUrl())) {
+        if (StrUtil.isBlank(agent.getLlmApiKey()) || StrUtil.isBlank(agent.getLlmBaseUrl()) || StrUtil.isBlank(agent.getLlmModel())) {
             throw new BusinessException(ErrorCode.AGENT_LLM_CONFIG_INCOMPLETE);
         }
 
         // 3. 策略评估（针对 LLM 调用）
-        String llmUrl = agent.getLlmBaseUrl() + "/chat/completions";
+        String llmUrl = buildLlmUrl(agent.getLlmBaseUrl());
         PolicyResult policyResult = policyEngine.evaluate(
                 llmUrl,
                 "POST",
@@ -186,11 +186,8 @@ public class ProxyServiceImpl implements ProxyService {
             SseEmitter emitter = new SseEmitter();
             String approvalRequestId = null; // 声明在外部作用域
             try {
-                // 提取模型信息
-                String model = "gpt-4";
-                if (request.getBody() != null && request.getBody().containsKey("model")) {
-                    model = request.getBody().get("model").toString();
-                }
+                // 使用Agent配置的模型（而不是客户端传入的模型）
+                String model = agent.getLlmModel();
 
                 // TODO: LLM 审批功能暂时注释，后期再详细设计
                 // if (policyResult.isRequireApproval()) {
@@ -338,6 +335,14 @@ public class ProxyServiceImpl implements ProxyService {
 
         // 修改请求体，添加 stream_options 以获取 token 使用统计
         Map<String, Object> modifiedBody = new LinkedHashMap<>(request.getBody());
+
+        // 使用 Agent 配置的模型
+        if (StrUtil.isNotBlank(agent.getLlmModel())) {
+            modifiedBody.put("model", agent.getLlmModel());
+            log.debug("使用Agent配置的模型: {}", agent.getLlmModel());
+        }
+
+        // 添加 stream_options
         if (!modifiedBody.containsKey("stream_options")) {
             Map<String, Object> streamOptions = MapUtil.builder(new LinkedHashMap<String, Object>())
                     .put("include_usage", true)
@@ -462,11 +467,8 @@ public class ProxyServiceImpl implements ProxyService {
                                 // 构建错误消息
                                 String errorMessage = "LLM API 请求失败: " + error.getMessage();
 
-                                // 提取模型信息
-                                String model = "gpt-4";
-                                if (request.getBody() != null && request.getBody().containsKey("model")) {
-                                    model = request.getBody().get("model").toString();
-                                }
+                                // 使用Agent配置的模型
+                                String model = agent.getLlmModel();
 
                                 // 构建符合 OpenAI chat.completion.chunk 格式的响应
                                 Map<String, Object> deltaMap = MapUtil.builder(new LinkedHashMap<String, Object>())
@@ -537,10 +539,10 @@ public class ProxyServiceImpl implements ProxyService {
                                     log.debug("首Token时间: {}ms", firstTokenTimeMs);
                                 }
 
-                                // 提取模型信息
+                                // 使用Agent配置的模型
                                 String model = null;
-                                if (request.getBody() != null && request.getBody().containsKey("model")) {
-                                    model = request.getBody().get("model").toString();
+                                if (StrUtil.isNotBlank(agent.getLlmModel())) {
+                                    model = agent.getLlmModel();
                                     logDto.setModel(model);
                                 }
 
@@ -1097,8 +1099,15 @@ public class ProxyServiceImpl implements ProxyService {
         headers.set("Authorization", "Bearer " + agent.getLlmApiKey());
         headers.set("Content-Type", "application/json");
 
+        // 使用 Agent 配置的模型覆盖请求体中的模型
+        Map<String, Object> modifiedBody = new LinkedHashMap<>(request.getBody());
+        if (StrUtil.isNotBlank(agent.getLlmModel())) {
+            modifiedBody.put("model", agent.getLlmModel());
+            log.debug("使用Agent配置的模型: {}", agent.getLlmModel());
+        }
+
         // 构建请求体
-        String requestBody = JSONUtil.toJsonStr(request.getBody());
+        String requestBody = JSONUtil.toJsonStr(modifiedBody);
         log.debug("转发LLM请求体: {}", requestBody);
         log.debug("请求体长度: {}", requestBody != null ? requestBody.length() : 0);
 
@@ -1106,7 +1115,7 @@ public class ProxyServiceImpl implements ProxyService {
         HttpEntity<String> entity = new HttpEntity<>(requestBody, headers);
 
         // 发起请求
-        String llmUrl = agent.getLlmBaseUrl() + "/chat/completions";
+        String llmUrl = buildLlmUrl(agent.getLlmBaseUrl());
         log.debug("转发到LLM URL: {}", llmUrl);
         ResponseEntity<String> response = restTemplate.exchange(
                 llmUrl,
@@ -1181,7 +1190,7 @@ public class ProxyServiceImpl implements ProxyService {
                               PolicyResult policyResult, boolean success, String approvalRequestId) {
         try {
             // 构建真实的 LLM URL
-            String llmUrl = agent.getLlmBaseUrl() + "/chat/completions";
+            String llmUrl = buildLlmUrl(agent.getLlmBaseUrl());
 
             AgentLogCreateDTO logDto = new AgentLogCreateDTO();
             logDto.setAgentId(agent.getId());
@@ -1199,10 +1208,10 @@ public class ProxyServiceImpl implements ProxyService {
                 log.info("已设置审批请求ID到日志DTO: {}", approvalRequestId);
             }
 
-            // 提取模型信息
+            // 使用Agent配置的模型
             String model = null;
-            if (request.getBody() != null && request.getBody().containsKey("model")) {
-                model = request.getBody().get("model").toString();
+            if (StrUtil.isNotBlank(agent.getLlmModel())) {
+                model = agent.getLlmModel();
                 logDto.setModel(model);
             }
 
@@ -1536,5 +1545,34 @@ public class ProxyServiceImpl implements ProxyService {
             log.warn("创建LLM请求摘要失败", e);
             return "{}";
         }
+    }
+
+    /**
+     * 根据规则构建 LLM API URL
+     * 规则：
+     * 1. 如果以 # 结尾，强制使用输入的地址（去掉 #）
+     * 2. 如果以 / 结尾，忽略 v1 版本，直接拼接 /chat/completions
+     * 3. 否则，默认拼接 /v1/chat/completions
+     *
+     * @param baseUrl LLM Base URL
+     * @return 完整的 LLM API URL
+     */
+    private String buildLlmUrl(String baseUrl) {
+        if (StrUtil.isBlank(baseUrl)) {
+            throw new BusinessException(ErrorCode.AGENT_LLM_CONFIG_INCOMPLETE);
+        }
+
+        // 如果以 # 结尾，强制使用输入的地址（去掉 #）
+        if (baseUrl.endsWith("#")) {
+            return baseUrl.substring(0, baseUrl.length() - 1);
+        }
+
+        // 如果以 / 结尾，忽略 v1 版本，直接拼接 /chat/completions
+        if (baseUrl.endsWith("/")) {
+            return baseUrl + "chat/completions";
+        }
+
+        // 否则，默认拼接 /v1/chat/completions
+        return baseUrl + "/v1/chat/completions";
     }
 }

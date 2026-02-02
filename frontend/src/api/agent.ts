@@ -57,3 +57,16 @@ export function getAgentPolicies(agentId: string): Promise<Policy[]> {
 export function getAgentPolicyBindings(agentId: string): Promise<AgentPolicyBinding[]> {
   return request.get(`/agents/${agentId}/policy-bindings`)
 }
+
+/**
+ * 测试LLM连接配置
+ */
+export function testLlmConnection(data: {
+  agentId?: string
+  llmProvider?: string
+  llmApiKey?: string
+  llmBaseUrl?: string
+  llmModel?: string
+}): Promise<{ success: boolean; message: string; actualModel?: string }> {
+  return request.post('/agents/test-connection', data)
+}

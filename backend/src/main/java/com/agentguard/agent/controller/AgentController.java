@@ -4,6 +4,7 @@ import com.agentguard.agent.dto.AgentCreateDTO;
 import com.agentguard.agent.dto.AgentDTO;
 import com.agentguard.agent.dto.AgentPolicyBindingDTO;
 import com.agentguard.agent.dto.AgentUpdateDTO;
+import com.agentguard.agent.dto.LlmTestConnectionDTO;
 import com.agentguard.agent.service.AgentPolicyBindingService;
 import com.agentguard.agent.service.AgentService;
 import com.agentguard.common.response.Result;
@@ -17,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Agent 管理控制器
@@ -65,6 +67,12 @@ public class AgentController {
     public Result<Void> delete(@PathVariable String id) {
         agentService.delete(id);
         return Result.success();
+    }
+
+    @Operation(summary = "测试LLM连接配置")
+    @PostMapping("/test-connection")
+    public Result<Map<String, Object>> testConnection(@RequestBody LlmTestConnectionDTO dto) {
+        return Result.success(agentService.testLlmConnection(dto));
     }
 
     // ==================== 策略绑定管理 ====================

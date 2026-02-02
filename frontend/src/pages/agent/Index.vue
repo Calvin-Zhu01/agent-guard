@@ -4,7 +4,7 @@
  *
  * @author zhuhx
  */
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { View, Hide, CopyDocument } from '@element-plus/icons-vue'
 import * as agentApi from '@/api/agent'
@@ -30,8 +30,54 @@ const formData = ref<AgentCreateDTO>({
   description: '',
   llmProvider: 'openai',
   llmApiKey: '',
-  llmBaseUrl: 'https://api.openai.com/v1',
-  llmModel: 'gpt-3.5-turbo'
+  llmBaseUrl: '',
+  llmModel: ''
+})
+
+// 表单验证规则
+const formRules = {
+  name: [{ required: true, message: '请输入Agent名称', trigger: 'blur' }],
+  llmProvider: [{ required: true, message: '请选择LLM提供商', trigger: 'change' }],
+  llmApiKey: [
+    {
+      required: true,
+      validator: (_rule: any, value: any, callback: any) => {
+        // 编辑模式下，如果字段为空则不验证（保持原密钥）
+        if (isEditMode.value && !value) {
+          callback()
+        } else if (!isEditMode.value && !value) {
+          // 新建模式下必填
+          callback(new Error('请输入LLM API密钥'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur'
+    }
+  ],
+  llmBaseUrl: [{ required: true, message: '请输入LLM Base URL', trigger: 'blur' }],
+  llmModel: [{ required: true, message: '请输入默认模型名称', trigger: 'blur' }]
+}
+
+const formRef = ref()
+
+// 计算实际的 LLM API 端点
+const computedLlmEndpoint = computed(() => {
+  const baseUrl = formData.value.llmBaseUrl?.trim() || ''
+  if (!baseUrl) return ''
+
+  // 如果以 # 结尾，强制使用输入的地址（去掉 #）
+  if (baseUrl.endsWith('#')) {
+    return baseUrl.slice(0, -1)
+  }
+
+  // 如果以 / 结尾，忽略 v1 版本，直接拼接 /chat/completions
+  if (baseUrl.endsWith('/')) {
+    return baseUrl + 'chat/completions'
+  }
+
+  // 否则，默认拼接 /v1/chat/completions
+  return baseUrl + '/v1/chat/completions'
 })
 
 // 策略绑定相关
@@ -40,6 +86,9 @@ const selectedPolicyIds = ref<string[]>([])
 
 // 密钥可见性状态管理
 const visibleKeys = ref<Set<string>>(new Set())
+
+// 测试连接状态
+const testingConnection = ref(false)
 
 /**
  * 脱敏显示 API Key
@@ -111,13 +160,18 @@ function resetForm() {
     description: '',
     llmProvider: 'openai',
     llmApiKey: '',
-    llmBaseUrl: 'https://api.openai.com/v1',
-    llmModel: 'gpt-3.5-turbo'
+    llmBaseUrl: '',
+    llmModel: ''
   }
   selectedPolicyIds.value = []
   activeTab.value = 'basic'
   isEditMode.value = false
   editingAgentId.value = null
+
+  // 清除表单验证状态
+  if (formRef.value) {
+    formRef.value.clearValidate()
+  }
 }
 
 async function handleOpenCreate() {
@@ -140,7 +194,7 @@ async function handleOpenEdit(agent: Agent) {
     name: agent.name,
     description: agent.description || '',
     llmProvider: agent.llmProvider || 'openai',
-    llmApiKey: agent.llmApiKey || '',
+    llmApiKey: agent.llmApiKey || '', // 后端已返回脱敏的密钥
     llmBaseUrl: agent.llmBaseUrl || 'https://api.openai.com/v1',
     llmModel: agent.llmModel || 'gpt-3.5-turbo'
   }
@@ -161,7 +215,69 @@ async function handleOpenEdit(agent: Agent) {
   }
 }
 
+async function handleTestConnection() {
+  // 检查必填字段
+  if (!formData.value.llmProvider || !formData.value.llmBaseUrl || !formData.value.llmModel) {
+    ElMessage.warning('请先填写 LLM 提供商、API 地址和模型名称')
+    return
+  }
+
+  // 检查 API Key
+  const apiKey = formData.value.llmApiKey
+  if (!apiKey || !apiKey.trim()) {
+    if (!isEditMode.value || !editingAgentId.value) {
+      ElMessage.warning('请填写 API 密钥')
+      return
+    }
+  }
+
+  testingConnection.value = true
+  try {
+    const requestData: any = {
+      llmProvider: formData.value.llmProvider,
+      llmBaseUrl: formData.value.llmBaseUrl,
+      llmModel: formData.value.llmModel
+    }
+
+    // 如果是编辑模式且 API Key 是脱敏状态，发送 agentId
+    if (isEditMode.value && editingAgentId.value && (!apiKey || apiKey.includes('***'))) {
+      requestData.agentId = editingAgentId.value
+    } else if (apiKey && apiKey.trim() && !apiKey.includes('***')) {
+      // 如果提供了新的完整密钥，发送密钥
+      requestData.llmApiKey = apiKey
+    } else if (isEditMode.value && editingAgentId.value) {
+      // 编辑模式下，即使没有修改密钥，也发送 agentId
+      requestData.agentId = editingAgentId.value
+    } else {
+      ElMessage.warning('请填写 API 密钥')
+      return
+    }
+
+    const result = await agentApi.testLlmConnection(requestData)
+
+    if (result.success) {
+      ElMessage.success(result.message + (result.actualModel ? `（模型：${result.actualModel}）` : ''))
+    } else {
+      ElMessage.error(result.message)
+    }
+  } catch (error: any) {
+    ElMessage.error('测试连接失败：' + (error.message || '未知错误'))
+  } finally {
+    testingConnection.value = false
+  }
+}
+
 async function handleSubmit() {
+  // 验证表单
+  if (!formRef.value) return
+
+  try {
+    await formRef.value.validate()
+  } catch (e) {
+    ElMessage.warning('请填写完整的表单信息')
+    return
+  }
+
   try {
     if (isEditMode.value && editingAgentId.value) {
       // 更新 Agent 基本信息
@@ -169,10 +285,18 @@ async function handleSubmit() {
         name: formData.value.name,
         description: formData.value.description,
         llmProvider: formData.value.llmProvider,
-        llmApiKey: formData.value.llmApiKey,
         llmBaseUrl: formData.value.llmBaseUrl,
         llmModel: formData.value.llmModel
       }
+
+      // 检查API Key是否被修改（如果仍然是脱敏状态，则不更新）
+      const apiKey = formData.value.llmApiKey
+      if (apiKey && apiKey.trim() && !apiKey.includes('***')) {
+        // 用户输入了新的完整密钥
+        updateData.llmApiKey = apiKey
+      }
+      // 如果是脱敏状态（包含***）或为空，则不发送llmApiKey字段，保持原密钥不变
+
       await agentApi.updateAgent(editingAgentId.value, updateData)
 
       // 更新策略绑定
@@ -381,8 +505,8 @@ onMounted(() => {
     >
       <el-tabs v-model="activeTab">
         <el-tab-pane label="基本信息" name="basic">
-          <el-form :model="formData" label-width="120px" style="padding: 20px 0">
-            <el-form-item label="名称" required>
+          <el-form ref="formRef" :model="formData" :rules="formRules" label-width="120px" style="padding: 20px 0">
+            <el-form-item label="名称" prop="name">
               <el-input v-model="formData.name" placeholder="请输入Agent名称" />
             </el-form-item>
             <el-form-item label="描述">
@@ -391,7 +515,7 @@ onMounted(() => {
 
             <el-divider content-position="left">LLM 配置</el-divider>
 
-            <el-form-item label="LLM 提供商">
+            <el-form-item label="提供商" prop="llmProvider">
               <el-select v-model="formData.llmProvider" placeholder="选择LLM提供商" style="width: 100%">
                 <el-option label="OpenAI" value="openai" />
                 <el-option label="Anthropic" value="anthropic" />
@@ -399,24 +523,30 @@ onMounted(() => {
               </el-select>
             </el-form-item>
 
-            <el-form-item label="LLM API Key">
+            <el-form-item label="API 密钥" prop="llmApiKey">
               <el-input
                 v-model="formData.llmApiKey"
-                type="password"
-                placeholder="请输入LLM API密钥（如 sk-xxx）"
-                show-password
+                placeholder="API 密钥"
               />
             </el-form-item>
 
-            <el-form-item label="LLM Base URL">
-              <el-input v-model="formData.llmBaseUrl" placeholder="LLM API地址" />
-              <div style="margin-top: 4px; font-size: 12px; color: var(--el-text-color-secondary)">
-                默认值：OpenAI: https://api.openai.com/v1
+            <el-form-item label="API 地址" prop="llmBaseUrl">
+              <el-input v-model="formData.llmBaseUrl" placeholder="API 地址" />
+              <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px;">
+                <div style="font-size: 12px; color: var(--el-text-color-secondary);">
+                  /结尾忽略v1版本，#结尾强制使用输入地址
+                </div>
+                <div v-if="computedLlmEndpoint" style="font-size: 12px; color: var(--el-text-color-regular); word-break: break-all;">
+                  实际端点：{{ computedLlmEndpoint }}
+                </div>
               </div>
             </el-form-item>
 
-            <el-form-item label="默认模型">
-              <el-input v-model="formData.llmModel" placeholder="默认模型名称（如 gpt-3.5-turbo）" />
+            <el-form-item label="模型名称" prop="llmModel">
+              <el-input v-model="formData.llmModel" placeholder="模型名称" />
+              <div style="margin-top: 4px; font-size: 12px; color: var(--el-text-color-secondary)">
+                例如：gpt-3.5-turbo
+              </div>
             </el-form-item>
           </el-form>
         </el-tab-pane>
@@ -457,8 +587,18 @@ onMounted(() => {
       </el-tabs>
 
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit">{{ isEditMode ? '保存' : '确定' }}</el-button>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <el-button
+            :loading="testingConnection"
+            @click="handleTestConnection"
+          >
+            {{ testingConnection ? '测试中...' : '测试连接' }}
+          </el-button>
+          <div>
+            <el-button @click="dialogVisible = false">取消</el-button>
+            <el-button type="primary" @click="handleSubmit">{{ isEditMode ? '保存' : '确定' }}</el-button>
+          </div>
+        </div>
       </template>
     </el-dialog>
   </div>

@@ -5,9 +5,12 @@ import cn.hutool.core.bean.copier.CopyOptions;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
 import com.agentguard.agent.dto.AgentCreateDTO;
 import com.agentguard.agent.dto.AgentDTO;
 import com.agentguard.agent.dto.AgentUpdateDTO;
+import com.agentguard.agent.dto.LlmTestConnectionDTO;
 import com.agentguard.agent.entity.AgentDO;
 import com.agentguard.agent.mapper.AgentMapper;
 import com.agentguard.agent.mapper.AgentPolicyBindingMapper;
@@ -21,10 +24,17 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -42,6 +52,7 @@ public class AgentServiceImpl implements AgentService {
     private final AgentPolicyBindingMapper bindingMapper;
     private final PolicyMapper policyMapper;
     private final EncryptionUtil encryptionUtil;
+    private final RestTemplate restTemplate;
 
     @Override
     @Transactional
@@ -90,9 +101,17 @@ public class AgentServiceImpl implements AgentService {
             throw new BusinessException(ErrorCode.AGENT_NOT_FOUND);
         }
 
-        // 加密 LLM API Key（如果提供了新的密钥）
+        // 处理 LLM API Key 更新
+        // 如果提供了新的密钥，需要判断是否为脱敏后的密钥
         if (StrUtil.isNotBlank(dto.getLlmApiKey())) {
-            dto.setLlmApiKey(encryptionUtil.encrypt(dto.getLlmApiKey()));
+            // 检查是否为脱敏密钥（包含 "***"）
+            if (dto.getLlmApiKey().contains("***")) {
+                // 脱敏密钥，不更新（保持原有密钥）
+                dto.setLlmApiKey(null);
+            } else {
+                // 真实密钥，加密后更新
+                dto.setLlmApiKey(encryptionUtil.encrypt(dto.getLlmApiKey()));
+            }
         }
 
         // 使用 Hutool 忽略空值拷贝
@@ -212,5 +231,145 @@ public class AgentServiceImpl implements AgentService {
 
     private String generateApiKey() {
         return API_KEY_PREFIX + IdUtil.simpleUUID();
+    }
+
+    @Override
+    public Map<String, Object> testLlmConnection(LlmTestConnectionDTO dto) {
+        Map<String, Object> result = new HashMap<>();
+
+        String llmProvider;
+        String llmApiKey;
+        String llmBaseUrl;
+        String llmModel;
+
+        // 如果提供了 agentId，从数据库加载配置
+        if (StrUtil.isNotBlank(dto.getAgentId())) {
+            AgentDO agentDO = agentMapper.selectById(dto.getAgentId());
+            if (ObjectUtil.isNull(agentDO)) {
+                result.put("success", false);
+                result.put("message", "Agent 不存在");
+                return result;
+            }
+
+            // 使用 Agent 的配置作为基础
+            llmProvider = StrUtil.isNotBlank(dto.getLlmProvider()) ? dto.getLlmProvider() : agentDO.getLlmProvider();
+            llmBaseUrl = StrUtil.isNotBlank(dto.getLlmBaseUrl()) ? dto.getLlmBaseUrl() : agentDO.getLlmBaseUrl();
+            llmModel = StrUtil.isNotBlank(dto.getLlmModel()) ? dto.getLlmModel() : agentDO.getLlmModel();
+
+            // API Key 处理：如果 DTO 中提供了新的密钥，使用新密钥；否则使用数据库中的密钥
+            if (StrUtil.isNotBlank(dto.getLlmApiKey()) && !dto.getLlmApiKey().contains("***")) {
+                llmApiKey = dto.getLlmApiKey();
+            } else {
+                // 解密数据库中的密钥
+                llmApiKey = encryptionUtil.decrypt(agentDO.getLlmApiKey());
+            }
+        } else {
+            // 没有提供 agentId，使用 DTO 中的配置
+            llmProvider = dto.getLlmProvider();
+            llmApiKey = dto.getLlmApiKey();
+            llmBaseUrl = dto.getLlmBaseUrl();
+            llmModel = dto.getLlmModel();
+
+            // 验证必填字段
+            if (StrUtil.isBlank(llmProvider) || StrUtil.isBlank(llmApiKey) ||
+                StrUtil.isBlank(llmBaseUrl) || StrUtil.isBlank(llmModel)) {
+                result.put("success", false);
+                result.put("message", "请填写完整的 LLM 配置信息");
+                return result;
+            }
+        }
+
+        try {
+            // 构建 LLM API URL
+            String llmUrl = buildLlmUrl(llmBaseUrl);
+
+            // 构建测试请求
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("model", llmModel);
+            requestBody.put("messages", List.of(
+                Map.of("role", "user", "content", "Hello")
+            ));
+            requestBody.put("max_tokens", 10);
+
+            // 设置请求头
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Content-Type", "application/json");
+            headers.set("Authorization", "Bearer " + llmApiKey);
+
+            HttpEntity<String> entity = new HttpEntity<>(JSONUtil.toJsonStr(requestBody), headers);
+
+            // 发送请求
+            ResponseEntity<String> response = restTemplate.exchange(
+                llmUrl,
+                HttpMethod.POST,
+                entity,
+                String.class
+            );
+
+            // 检查响应
+            if (response.getStatusCode().is2xxSuccessful()) {
+                result.put("success", true);
+                result.put("message", "连接成功");
+
+                // 尝试解析响应以获取更多信息
+                try {
+                    JSONObject responseJson = JSONUtil.parseObj(response.getBody());
+                    if (responseJson.containsKey("model")) {
+                        result.put("actualModel", responseJson.getStr("model"));
+                    }
+                } catch (Exception e) {
+                    // 忽略解析错误
+                }
+            } else {
+                result.put("success", false);
+                result.put("message", "连接失败：HTTP " + response.getStatusCode());
+            }
+
+        } catch (Exception e) {
+            result.put("success", false);
+            String errorMessage = e.getMessage();
+
+            // 提取更友好的错误信息
+            if (errorMessage != null) {
+                if (errorMessage.contains("401")) {
+                    result.put("message", "API 密钥无效或已过期");
+                } else if (errorMessage.contains("404")) {
+                    result.put("message", "API 地址不正确或模型不存在");
+                } else if (errorMessage.contains("timeout") || errorMessage.contains("timed out")) {
+                    result.put("message", "连接超时，请检查网络或 API 地址");
+                } else if (errorMessage.contains("Connection refused")) {
+                    result.put("message", "无法连接到 API 服务器");
+                } else {
+                    result.put("message", "连接失败：" + errorMessage);
+                }
+            } else {
+                result.put("message", "连接失败：未知错误");
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * 构建 LLM API URL
+     * 规则：
+     * - 以 # 结尾：强制使用输入的地址（去掉 #）
+     * - 以 / 结尾：忽略 v1 版本，直接拼接 /chat/completions
+     * - 其他：默认拼接 /v1/chat/completions
+     */
+    private String buildLlmUrl(String baseUrl) {
+        if (StrUtil.isBlank(baseUrl)) {
+            throw new BusinessException(ErrorCode.AGENT_LLM_CONFIG_INCOMPLETE);
+        }
+
+        if (baseUrl.endsWith("#")) {
+            return baseUrl.substring(0, baseUrl.length() - 1);
+        }
+
+        if (baseUrl.endsWith("/")) {
+            return baseUrl + "chat/completions";
+        }
+
+        return baseUrl + "/v1/chat/completions";
     }
 }
