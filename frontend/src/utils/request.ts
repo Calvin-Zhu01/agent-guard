@@ -23,8 +23,17 @@ function getToken(): string {
  * 清除登录状态
  */
 function clearAuth(): void {
+  // 清除 localStorage
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem('agentguard_user')
+
+  // 使用动态导入避免循环依赖
+  // 同步清除 Pinia store 的状态
+  import('@/stores/user').then(({ useUserStore }) => {
+    const userStore = useUserStore()
+    userStore.clearToken()
+    userStore.clearUserInfo()
+  })
 }
 
 const request: AxiosInstance = axios.create({

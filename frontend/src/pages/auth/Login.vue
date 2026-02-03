@@ -18,8 +18,8 @@ const loading = ref(false)
 const formRef = ref<FormInstance>()
 const rememberMe = ref(false)
 const form = reactive({
-  username: '',
-  password: ''
+  username: 'admin',
+  password: 'admin123'
 })
 
 const rules: FormRules = {
@@ -101,7 +101,7 @@ function handleKeyup(e: KeyboardEvent) {
     <div class="form-section">
       <div class="login-box">
         <div class="login-header">
-          <h2 class="login-title">欢迎登录</h2>
+          <h2 class="login-title">登录</h2>
           <p class="login-desc">请输入您的账号信息</p>
         </div>
 
@@ -153,19 +153,10 @@ function handleKeyup(e: KeyboardEvent) {
             </el-button>
           </el-form-item>
         </el-form>
-
-        <div class="login-footer">
-          <el-divider>
-            <span class="divider-text">测试账号</span>
-          </el-divider>
-          <div class="test-account">
-            <el-tag type="info" size="small">admin / admin123</el-tag>
-          </div>
-        </div>
       </div>
 
       <div class="copyright">
-        <span>© 2024 AgentGuard. All rights reserved.</span>
+        <span>© 2026 AgentGuard. All rights reserved.</span>
       </div>
     </div>
   </div>

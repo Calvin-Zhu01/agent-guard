@@ -44,8 +44,6 @@ public class SecurityConfig {
                 .requestMatchers("/swagger-ui/**", "/api-docs/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                 // 公开接口 - 健康检查
                 .requestMatchers("/actuator/**").permitAll()
-                // TODO: 开发阶段暂时放开所有接口，生产环境需要移除此配置
-                .requestMatchers("/api/**").permitAll()
                 // Proxy 接口（Agent 通过 API Key 认证，后续实现 API Key 过滤器）
                 .requestMatchers("/proxy/**").permitAll()
                 // 其他请求需要认证

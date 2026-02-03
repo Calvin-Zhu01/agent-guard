@@ -42,4 +42,11 @@ public class AuthController {
     public Result<UserDTO> getCurrentUser() {
         return Result.success(authService.getCurrentUser());
     }
+
+    @PostMapping("/logout")
+    @Operation(summary = "用户登出", description = "用户登出")
+    public Result<Void> logout() {
+        // JWT是无状态的，实际的登出由前端清除Token完成
+        return Result.success();
+    }
 }
