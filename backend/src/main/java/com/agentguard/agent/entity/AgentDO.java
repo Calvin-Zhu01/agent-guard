@@ -39,6 +39,9 @@ public class AgentDO {
     /** 默认模型 */
     private String llmModel;
 
+    /** Agent状态：0-禁用，1-启用 */
+    private Integer status;
+
     /** 最后活跃时间 */
     private LocalDateTime lastActiveAt;
 

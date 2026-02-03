@@ -70,3 +70,17 @@ export function testLlmConnection(data: {
 }): Promise<{ success: boolean; message: string; actualModel?: string }> {
   return request.post('/agents/test-connection', data)
 }
+
+/**
+ * 启用Agent
+ */
+export function enableAgent(id: string): Promise<Agent> {
+  return request.put(`/agents/${id}/enable`)
+}
+
+/**
+ * 禁用Agent
+ */
+export function disableAgent(id: string): Promise<Agent> {
+  return request.put(`/agents/${id}/disable`)
+}

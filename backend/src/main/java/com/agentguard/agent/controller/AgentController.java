@@ -75,6 +75,18 @@ public class AgentController {
         return Result.success(agentService.testLlmConnection(dto));
     }
 
+    @Operation(summary = "启用Agent")
+    @PutMapping("/{id}/enable")
+    public Result<AgentDTO> enableAgent(@PathVariable String id) {
+        return Result.success(agentService.enableAgent(id));
+    }
+
+    @Operation(summary = "禁用Agent")
+    @PutMapping("/{id}/disable")
+    public Result<AgentDTO> disableAgent(@PathVariable String id) {
+        return Result.success(agentService.disableAgent(id));
+    }
+
     // ==================== 策略绑定管理 ====================
 
     @Operation(summary = "绑定策略到Agent")

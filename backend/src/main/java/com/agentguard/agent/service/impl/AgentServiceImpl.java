@@ -372,4 +372,30 @@ public class AgentServiceImpl implements AgentService {
 
         return baseUrl + "/v1/chat/completions";
     }
+
+    @Override
+    @Transactional
+    public AgentDTO enableAgent(String id) {
+        AgentDO agentDO = agentMapper.selectById(id);
+        if (ObjectUtil.isNull(agentDO)) {
+            throw new BusinessException(ErrorCode.AGENT_NOT_FOUND);
+        }
+        agentDO.setStatus(1);
+        agentDO.setUpdatedAt(java.time.LocalDateTime.now());
+        agentMapper.updateById(agentDO);
+        return toDTO(agentDO);
+    }
+
+    @Override
+    @Transactional
+    public AgentDTO disableAgent(String id) {
+        AgentDO agentDO = agentMapper.selectById(id);
+        if (ObjectUtil.isNull(agentDO)) {
+            throw new BusinessException(ErrorCode.AGENT_NOT_FOUND);
+        }
+        agentDO.setStatus(0);
+        agentDO.setUpdatedAt(java.time.LocalDateTime.now());
+        agentMapper.updateById(agentDO);
+        return toDTO(agentDO);
+    }
 }

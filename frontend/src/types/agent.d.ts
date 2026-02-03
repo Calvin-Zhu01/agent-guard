@@ -7,6 +7,7 @@ export interface Agent {
   llmApiKey?: string
   llmBaseUrl?: string
   llmModel?: string
+  status?: number  // 0-禁用，1-启用
   lastActiveAt?: string
   createdAt: string
   updatedAt: string

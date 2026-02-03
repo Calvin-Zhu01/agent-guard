@@ -625,18 +625,32 @@ async function handleDelete(policy: Policy) {
  */
 async function handleToggleEnabled(policy: Policy) {
   // 注意：el-switch 的 @change 事件触发时，policy.enabled 已经是切换后的新值
-  const action = policy.enabled ? '启用' : '停用'
+  const newStatus = policy.enabled
+  const action = newStatus ? '启用' : '停用'
+
   try {
-    if (policy.enabled) {
+    // 弹窗确认
+    await ElMessageBox.confirm(
+      `确定要${action}该策略吗？${!newStatus ? '停用后该策略将不再生效。' : ''}`,
+      `${action}确认`,
+      {
+        type: 'warning',
+        confirmButtonText: `确定${action}`,
+        cancelButtonText: '取消'
+      }
+    )
+
+    // 执行启用/禁用操作
+    if (newStatus) {
       await policyApi.enablePolicy(policy.id)
     } else {
       await policyApi.disablePolicy(policy.id)
     }
     ElMessage.success(`${action}成功`)
     fetchData()
-  } catch (e) {
-    // error handled by interceptor, revert switch state
-    policy.enabled = !policy.enabled
+  } catch (e: any) {
+    // user cancelled or error handled by interceptor, revert switch state
+    policy.enabled = !newStatus
   }
 }
 
@@ -802,7 +816,8 @@ onMounted(() => {
           </template>
         </el-table-column>
         <el-table-column prop="priority" label="优先级" width="70" align="center" />
-        <el-table-column prop="enabled" label="状态" width="70" align="center">
+        <el-table-column prop="updatedAt" label="修改时间" width="160" />
+        <el-table-column prop="enabled" label="状态" width="70" align="center" fixed="right">
           <template #default="{ row }">
             <el-switch
               v-model="row.enabled"
@@ -810,7 +825,6 @@ onMounted(() => {
             />
           </template>
         </el-table-column>
-        <el-table-column prop="updatedAt" label="修改时间" width="160" />
         <el-table-column label="操作" width="120" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleOpenEdit(row)">编辑</el-button>

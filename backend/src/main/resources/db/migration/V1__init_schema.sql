@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS `agent` (
     `llm_api_key` VARCHAR(256) COMMENT '真实的LLM API密钥（加密存储）',
     `llm_base_url` VARCHAR(500) COMMENT 'LLM API地址',
     `llm_model` VARCHAR(100) COMMENT '默认模型',
+    `status` TINYINT NOT NULL DEFAULT 1 COMMENT 'Agent状态：0-禁用，1-启用',
     `last_active_at` DATETIME COMMENT '最后活跃时间',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

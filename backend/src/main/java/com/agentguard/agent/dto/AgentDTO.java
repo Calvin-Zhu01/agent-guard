@@ -40,6 +40,9 @@ public class AgentDTO {
     @Schema(description = "默认模型")
     private String llmModel;
 
+    @Schema(description = "Agent状态：0-禁用，1-启用")
+    private Integer status;
+
     @Schema(description = "最后活跃时间")
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime lastActiveAt;

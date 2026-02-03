@@ -360,6 +360,40 @@ async function handleDelete(id: string) {
   }
 }
 
+async function handleToggleStatus(agent: Agent) {
+  // 注意：el-switch 的 @change 事件触发时，agent.status 已经是切换后的新值
+  const newStatus = agent.status
+  const isEnabled = newStatus === 1
+  const action = isEnabled ? '启用' : '禁用'
+
+  try {
+    // 弹窗确认
+    await ElMessageBox.confirm(
+      `确定要${action}该Agent吗？${!isEnabled ? '禁用后将无法使用该Agent。' : ''}`,
+      `${action}确认`,
+      {
+        type: 'warning',
+        confirmButtonText: `确定${action}`,
+        cancelButtonText: '取消'
+      }
+    )
+
+    // 执行启用/禁用操作
+    if (isEnabled) {
+      await agentApi.enableAgent(agent.id)
+      ElMessage.success('已启用')
+    } else {
+      await agentApi.disableAgent(agent.id)
+      ElMessage.success('已禁用')
+    }
+
+    fetchData()
+  } catch (e: any) {
+    // user cancelled or error handled by interceptor, revert switch state
+    agent.status = newStatus === 1 ? 0 : 1
+  }
+}
+
 function handleSearch() {
   queryParams.value.current = 1
   fetchData()
@@ -478,6 +512,16 @@ onMounted(() => {
         </el-table-column>
         <el-table-column prop="description" label="描述" show-overflow-tooltip />
         <el-table-column prop="createdAt" label="创建时间" width="180" />
+        <el-table-column label="状态" width="80" fixed="right">
+          <template #default="{ row }">
+            <el-switch
+              v-model="row.status"
+              :active-value="1"
+              :inactive-value="0"
+              @change="handleToggleStatus(row)"
+            />
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleOpenEdit(row)">编辑</el-button>

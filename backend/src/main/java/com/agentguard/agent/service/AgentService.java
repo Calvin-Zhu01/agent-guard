@@ -43,4 +43,20 @@ public interface AgentService {
      * @return 测试结果（success: true/false, message: 提示信息）
      */
     Map<String, Object> testLlmConnection(LlmTestConnectionDTO dto);
+
+    /**
+     * 启用 Agent
+     *
+     * @param id Agent ID
+     * @return Agent信息
+     */
+    AgentDTO enableAgent(String id);
+
+    /**
+     * 禁用 Agent
+     *
+     * @param id Agent ID
+     * @return Agent信息
+     */
+    AgentDTO disableAgent(String id);
 }
