@@ -189,21 +189,6 @@ CREATE TABLE IF NOT EXISTS `model_price` (
 -- 告警模块
 -- =====================================================
 
--- 告警规则表
-CREATE TABLE IF NOT EXISTS `alert_rule` (
-    `id` VARCHAR(36) NOT NULL PRIMARY KEY,
-    `name` VARCHAR(100) NOT NULL COMMENT '规则名称',
-    `type` VARCHAR(30) NOT NULL COMMENT '告警类型: COST/ERROR_RATE/APPROVAL/SYSTEM',
-    `threshold` DECIMAL(10,4) COMMENT '阈值',
-    `channel_type` VARCHAR(20) NOT NULL COMMENT '通知渠道: EMAIL/WEBHOOK',
-    `channel_config` JSON NOT NULL COMMENT '渠道配置（邮箱地址/Webhook URL）',
-    `enabled` TINYINT NOT NULL DEFAULT 1 COMMENT '是否启用: 0-停用 1-启用',
-    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `deleted` TINYINT NOT NULL DEFAULT 0,
-    UNIQUE KEY `uk_name` (`name`, `deleted`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='告警规则表';
-
 -- 告警历史表
 CREATE TABLE IF NOT EXISTS `alert_history` (
     `id` VARCHAR(36) NOT NULL PRIMARY KEY,
@@ -261,3 +246,57 @@ INSERT INTO `model_price` (`id`, `provider`, `model_name`, `input_price`, `outpu
 INSERT INTO `model_price` (`id`, `provider`, `model_name`, `input_price`, `output_price`, `description`, `created_at`, `updated_at`) VALUES
 ('mp_201', 'azure', 'gpt-4', 30.00, 60.00, 'Azure GPT-4', NOW(), NOW()),
 ('mp_202', 'azure', 'gpt-35-turbo', 0.50, 1.50, 'Azure GPT-3.5 Turbo', NOW(), NOW());
+
+-- =====================================================
+-- 系统设置模块
+-- =====================================================
+
+-- 系统设置表
+CREATE TABLE IF NOT EXISTS system_settings (
+    id VARCHAR(36) PRIMARY KEY COMMENT '主键ID',
+    setting_key VARCHAR(100) NOT NULL COMMENT '设置键',
+    setting_value TEXT COMMENT '设置值',
+    category VARCHAR(50) NOT NULL COMMENT '设置分类',
+    description VARCHAR(255) COMMENT '设置描述',
+    encrypted BOOLEAN DEFAULT FALSE COMMENT '是否加密存储',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    deleted BOOLEAN DEFAULT FALSE COMMENT '是否删除',
+    UNIQUE KEY uk_category_key (category, setting_key, deleted)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统设置表';
+
+-- 创建索引
+CREATE INDEX idx_category ON system_settings(category);
+CREATE INDEX idx_setting_key ON system_settings(setting_key);
+
+-- 插入默认配置
+INSERT INTO system_settings (id, category, setting_key, setting_value, description, encrypted) VALUES
+-- 邮件配置
+(UUID(), 'alert_email', 'enabled', 'false', '是否启用邮件通知', FALSE),
+(UUID(), 'alert_email', 'smtp_host', '', 'SMTP服务器地址', FALSE),
+(UUID(), 'alert_email', 'smtp_port', '587', 'SMTP服务器端口', FALSE),
+(UUID(), 'alert_email', 'from_email', '', '发件人邮箱', FALSE),
+(UUID(), 'alert_email', 'from_name', 'AgentGuard', '发件人名称', FALSE),
+(UUID(), 'alert_email', 'username', '', 'SMTP用户名', FALSE),
+(UUID(), 'alert_email', 'password', '', 'SMTP密码', TRUE),
+(UUID(), 'alert_email', 'ssl_enabled', 'true', '是否启用SSL', FALSE),
+(UUID(), 'alert_email', 'default_recipients', 'admin@agentguard.com', '默认收件人', FALSE),
+
+-- Webhook配置
+(UUID(), 'alert_webhook', 'dingtalk_enabled', 'false', '钉钉机器人是否启用', FALSE),
+(UUID(), 'alert_webhook', 'dingtalk_webhook', '', '钉钉机器人Webhook地址', FALSE),
+(UUID(), 'alert_webhook', 'dingtalk_secret', '', '钉钉机器人签名密钥', TRUE),
+(UUID(), 'alert_webhook', 'wecom_enabled', 'false', '企业微信机器人是否启用', FALSE),
+(UUID(), 'alert_webhook', 'wecom_webhook', '', '企业微信机器人Webhook地址', FALSE),
+(UUID(), 'alert_webhook', 'custom_webhook_enabled', 'false', '自定义Webhook是否启用', FALSE),
+(UUID(), 'alert_webhook', 'custom_webhook_url', '', '自定义Webhook地址', FALSE),
+
+-- 告警配置
+(UUID(), 'alert_config', 'cost_alert_enabled', 'true', '成本告警是否启用', FALSE),
+(UUID(), 'alert_config', 'cost_threshold', '85', '成本告警阈值（百分比）', FALSE),
+(UUID(), 'alert_config', 'error_rate_alert_enabled', 'true', '错误率告警是否启用', FALSE),
+(UUID(), 'alert_config', 'error_rate_threshold', '10', '错误率告警阈值（百分比）', FALSE),
+(UUID(), 'alert_config', 'error_rate_window', '60', '错误率统计时间窗口（分钟）', FALSE),
+(UUID(), 'alert_config', 'approval_reminder_enabled', 'true', '审批提醒是否启用', FALSE),
+(UUID(), 'alert_config', 'approval_reminder_minutes', '30', '审批提醒提前时间（分钟）', FALSE);
+

@@ -64,12 +64,6 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '成本分析' }
       },
       {
-        path: 'alerts',
-        name: 'AlertList',
-        component: () => import('@/pages/alert/Index.vue'),
-        meta: { title: '告警管理' }
-      },
-      {
         path: 'settings',
         name: 'Settings',
         component: () => import('@/pages/settings/Index.vue'),

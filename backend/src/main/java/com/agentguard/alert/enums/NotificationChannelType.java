@@ -18,7 +18,13 @@ public enum NotificationChannelType {
     EMAIL("EMAIL", "邮件"),
 
     /** Webhook */
-    WEBHOOK("WEBHOOK", "Webhook");
+    WEBHOOK("WEBHOOK", "Webhook"),
+
+    /** 钉钉机器人 */
+    DINGTALK("DINGTALK", "钉钉机器人"),
+
+    /** 企业微信机器人 */
+    WECOM("WECOM", "企业微信机器人");
 
     @EnumValue
     @JsonValue

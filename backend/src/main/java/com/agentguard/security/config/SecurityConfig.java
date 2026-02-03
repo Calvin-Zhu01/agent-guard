@@ -46,6 +46,8 @@ public class SecurityConfig {
                 .requestMatchers("/actuator/**").permitAll()
                 // Proxy 接口（Agent 通过 API Key 认证，后续实现 API Key 过滤器）
                 .requestMatchers("/proxy/**").permitAll()
+                // 审批接口 - Agent SDK 轮询使用（通过审批 ID 访问，无需 JWT）
+                .requestMatchers("/api/v1/approvals/*/status", "/api/v1/approvals/*/reason").permitAll()
                 // 其他请求需要认证
                 .anyRequest().authenticated()
             )

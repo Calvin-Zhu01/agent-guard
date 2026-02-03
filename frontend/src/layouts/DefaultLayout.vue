@@ -4,13 +4,12 @@
  *
  * @author zhuhx
  */
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { useTagsStore } from '@/stores/tags'
 import { logout as logoutApi } from '@/api/auth'
-import { countAlertHistory } from '@/api/alert'
 import TagsBar from '@/components/TagsBar.vue'
 
 const route = useRoute()
@@ -21,10 +20,6 @@ const tagsStore = useTagsStore()
 const isCollapse = ref(false)
 const loggingOut = ref(false)
 
-// 告警徽章数量（失败的告警数）
-const alertBadgeCount = ref(0)
-let alertPollingTimer: ReturnType<typeof setInterval> | null = null
-
 const activeMenu = computed(() => route.path)
 
 const menuItems = [
@@ -33,7 +28,6 @@ const menuItems = [
   { path: '/logs', title: '调用日志', icon: 'Document' },
   { path: '/policies', title: '策略管理', icon: 'Lock' },
   { path: '/approvals', title: '审批中心', icon: 'Checked' },
-  { path: '/alerts', title: '告警管理', icon: 'Bell', badge: true },
   { path: '/stats', title: '成本分析', icon: 'TrendCharts' },
   { path: '/settings', title: '系统设置', icon: 'Setting' }
 ]
@@ -49,37 +43,6 @@ const visibleMenuItems = computed(() => {
     return item.roles.includes('ADMIN') && userStore.isAdmin
   })
 })
-
-/**
- * 获取失败告警数量
- */
-async function fetchAlertBadgeCount() {
-  try {
-    // 获取最近24小时内失败的告警数量
-    const now = new Date()
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)
-    const startTime = formatDateTime(yesterday)
-    const endTime = formatDateTime(now)
-    
-    const count = await countAlertHistory({ status: 'FAILED', startTime, endTime })
-    alertBadgeCount.value = count || 0
-  } catch {
-    // 静默失败
-  }
-}
-
-/**
- * 格式化日期时间
- */
-function formatDateTime(date: Date): string {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  const hours = String(date.getHours()).padStart(2, '0')
-  const minutes = String(date.getMinutes()).padStart(2, '0')
-  const seconds = String(date.getSeconds()).padStart(2, '0')
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
-}
 
 /**
  * 退出登录
@@ -122,23 +85,11 @@ async function handleLogout() {
 onMounted(() => {
   // 初始化当前路由标签
   tagsStore.addTag(route)
-
-  // 初始获取告警数量
-  fetchAlertBadgeCount()
-  // 每分钟轮询一次
-  alertPollingTimer = setInterval(fetchAlertBadgeCount, 60000)
 })
 
 // 监听路由变化，添加标签
 router.afterEach((to) => {
   tagsStore.addTag(to)
-})
-
-onUnmounted(() => {
-  if (alertPollingTimer) {
-    clearInterval(alertPollingTimer)
-    alertPollingTimer = null
-  }
 })
 </script>
 
@@ -168,15 +119,7 @@ onUnmounted(() => {
         active-text-color="#409eff"
       >
         <el-menu-item v-for="item in visibleMenuItems" :key="item.path" :index="item.path">
-          <el-badge 
-            v-if="item.badge && alertBadgeCount > 0" 
-            :value="alertBadgeCount" 
-            :max="99"
-            class="menu-badge"
-          >
-            <el-icon><component :is="item.icon" /></el-icon>
-          </el-badge>
-          <el-icon v-else><component :is="item.icon" /></el-icon>
+          <el-icon><component :is="item.icon" /></el-icon>
           <template #title>{{ item.title }}</template>
         </el-menu-item>
       </el-menu>

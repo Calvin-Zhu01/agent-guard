@@ -82,10 +82,10 @@ alert:
       cron: ${ALERT_SCHEDULER_ERROR_RATE_CRON:0 */5 * * * ?}
       window-minutes: ${ALERT_SCHEDULER_ERROR_RATE_WINDOW:30}
       threshold: ${ALERT_SCHEDULER_ERROR_RATE_THRESHOLD:0.1}
-    # 审批过期提醒：每10分钟执行一次
+    # 审批过期提醒：每1分钟执行一次
     approval:
-      cron: ${ALERT_SCHEDULER_APPROVAL_CRON:0 */10 * * * ?}
-      reminder-minutes: ${ALERT_SCHEDULER_APPROVAL_REMINDER:30}
+      cron: ${ALERT_SCHEDULER_APPROVAL_CRON:0 * * * * ?}
+      reminder-minutes: ${ALERT_SCHEDULER_APPROVAL_REMINDER:59}
 
 # 审批配置
 approval:

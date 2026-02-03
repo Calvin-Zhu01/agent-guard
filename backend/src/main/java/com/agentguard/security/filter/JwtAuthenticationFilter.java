@@ -39,6 +39,21 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtUtil jwtUtil;
 
     @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        // 跳过代理接口的JWT认证（Agent通过API Key认证）
+        if (path.startsWith("/proxy/")) {
+            return true;
+        }
+        // 跳过审批状态查询和理由提交接口（Agent SDK轮询使用）
+        if (path.matches("/api/v1/approvals/[^/]+/status") ||
+            path.matches("/api/v1/approvals/[^/]+/reason")) {
+            return true;
+        }
+        return false;
+    }
+
+    @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
 

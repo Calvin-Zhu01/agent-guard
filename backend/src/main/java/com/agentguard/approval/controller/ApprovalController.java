@@ -75,7 +75,7 @@ public class ApprovalController {
     }
 
     @Operation(
-            summary = "查询审批状态（用于客户端SDK轮询）",
+            summary = "查询审批状态",
             description = "返回审批状态，当审批通过时返回执行结果，当审批拒绝时返回拒绝原因"
     )
     @GetMapping("/{id}/status")

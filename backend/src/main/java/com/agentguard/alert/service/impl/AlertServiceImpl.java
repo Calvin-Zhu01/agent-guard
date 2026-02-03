@@ -2,16 +2,13 @@ package com.agentguard.alert.service.impl;
 
 import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.core.util.StrUtil;
-import cn.hutool.json.JSONUtil;
 import com.agentguard.alert.channel.NotificationChannel;
 import com.agentguard.alert.channel.NotificationChannelFactory;
 import com.agentguard.alert.dto.AlertDTO;
 import com.agentguard.alert.entity.AlertHistoryDO;
-import com.agentguard.alert.entity.AlertRuleDO;
 import com.agentguard.alert.enums.AlertStatus;
 import com.agentguard.alert.enums.AlertType;
 import com.agentguard.alert.mapper.AlertHistoryMapper;
-import com.agentguard.alert.mapper.AlertRuleMapper;
 import com.agentguard.alert.service.AlertService;
 import com.agentguard.approval.entity.ApprovalRequestDO;
 import com.agentguard.approval.enums.ApprovalStatus;
@@ -21,7 +18,9 @@ import com.agentguard.budget.service.BudgetService;
 import com.agentguard.log.entity.AgentLogDO;
 import com.agentguard.log.enums.ResponseStatus;
 import com.agentguard.log.mapper.AgentLogMapper;
+import com.agentguard.settings.service.SystemSettingsService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.agentguard.alert.enums.NotificationChannelType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -31,7 +30,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 
 /**
  * 告警服务实现类
@@ -43,12 +41,12 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AlertServiceImpl implements AlertService {
 
-    private final AlertRuleMapper alertRuleMapper;
     private final AlertHistoryMapper alertHistoryMapper;
     private final NotificationChannelFactory channelFactory;
     private final BudgetService budgetService;
     private final AgentLogMapper agentLogMapper;
     private final ApprovalMapper approvalMapper;
+    private final SystemSettingsService systemSettingsService;
 
     @Value("${alert.default-recipient:admin@agentguard.com}")
     private String defaultRecipient;
@@ -87,6 +85,15 @@ public class AlertServiceImpl implements AlertService {
     public void checkCostAlerts() {
         log.debug("开始检查成本告警...");
 
+        // 从系统设置获取告警配置
+        var alertSettings = systemSettingsService.getAlertSettings();
+
+        // 检查成本告警是否启用
+        if (!Boolean.TRUE.equals(alertSettings.getCostAlertEnabled())) {
+            log.debug("成本告警未启用");
+            return;
+        }
+
         // 获取当前预算使用情况
         BudgetWithUsageDTO currentBudget = budgetService.getCurrentBudget();
 
@@ -95,64 +102,76 @@ public class AlertServiceImpl implements AlertService {
             return;
         }
 
-        // 获取启用的成本告警规则
-        List<AlertRuleDO> costRules = getEnabledRulesByType(AlertType.COST);
-
-        if (costRules.isEmpty()) {
-            log.debug("没有启用的成本告警规则");
-            return;
+        // 获取邮件配置中的默认收件人
+        var emailSettings = systemSettingsService.getEmailSettings();
+        String recipient = emailSettings.getDefaultRecipients();
+        if (StrUtil.isBlank(recipient)) {
+            recipient = defaultRecipient;
         }
 
         BigDecimal usagePercentage = currentBudget.getUsagePercentage();
 
-        for (AlertRuleDO rule : costRules) {
-            BigDecimal threshold = rule.getThreshold();
+        // 使用系统设置中的阈值（转换为小数，如85% -> 0.85）
+        BigDecimal threshold = new BigDecimal(alertSettings.getCostThreshold()).divide(new BigDecimal("100"));
 
-            // 检查是否超过阈值
-            if (usagePercentage.compareTo(threshold) >= 0) {
-                String title = StrUtil.format("【成本告警】{}月预算使用已达{}%",
-                        currentBudget.getMonth(),
-                        usagePercentage.multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP));
+        // 检查是否超过阈值
+        if (usagePercentage.compareTo(threshold) >= 0) {
+            String title = StrUtil.format("【成本告警】{}月预算使用已达{}%",
+                    currentBudget.getMonth(),
+                    usagePercentage.multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP));
 
-                String content = StrUtil.format(
-                        "预算告警通知\n\n" +
-                        "月份：{}\n" +
-                        "预算上限：{}\n" +
-                        "已使用金额：{}\n" +
-                        "使用百分比：{}%\n" +
-                        "告警阈值：{}%\n" +
-                        "剩余金额：{}\n\n" +
-                        "请及时关注成本使用情况。",
-                        currentBudget.getMonth(),
-                        currentBudget.getLimitAmount(),
-                        currentBudget.getUsedAmount(),
-                        usagePercentage.multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP),
-                        threshold.multiply(new BigDecimal("100")).setScale(0, RoundingMode.HALF_UP),
-                        currentBudget.getRemainingAmount());
+            String content = StrUtil.format(
+                    "预算告警通知\n\n" +
+                    "月份：{}\n" +
+                    "预算上限：{}\n" +
+                    "已使用金额：{}\n" +
+                    "使用百分比：{}%\n" +
+                    "告警阈值：{}%\n" +
+                    "剩余金额：{}\n\n" +
+                    "请及时关注成本使用情况。",
+                    currentBudget.getMonth(),
+                    currentBudget.getLimitAmount(),
+                    currentBudget.getUsedAmount(),
+                    usagePercentage.multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP),
+                    alertSettings.getCostThreshold(),
+                    currentBudget.getRemainingAmount());
 
-                sendAlertByRule(rule, title, content);
-            }
+            // 发送告警
+            AlertDTO alert = new AlertDTO();
+            alert.setType(AlertType.COST);
+            alert.setTitle(title);
+            alert.setContent(content);
+            alert.setRecipient(recipient);
+            alert.setChannelType(NotificationChannelType.EMAIL);
+
+            sendAlert(alert);
         }
 
         // 检查是否超预算
         if (currentBudget.getOverBudget()) {
-            for (AlertRuleDO rule : costRules) {
-                String title = StrUtil.format("【预算超支】{}月已超出预算！", currentBudget.getMonth());
+            String title = StrUtil.format("【预算超支】{}月已超出预算！", currentBudget.getMonth());
 
-                String content = StrUtil.format(
-                        "预算超支告警\n\n" +
-                        "月份：{}\n" +
-                        "预算上限：{}\n" +
-                        "已使用金额：{}\n" +
-                        "超支金额：{}\n\n" +
-                        "请立即采取措施控制成本！",
-                        currentBudget.getMonth(),
-                        currentBudget.getLimitAmount(),
-                        currentBudget.getUsedAmount(),
-                        currentBudget.getUsedAmount().subtract(currentBudget.getLimitAmount()));
+            String content = StrUtil.format(
+                    "预算超支告警\n\n" +
+                    "月份：{}\n" +
+                    "预算上限：{}\n" +
+                    "已使用金额：{}\n" +
+                    "超支金额：{}\n\n" +
+                    "请立即采取措施控制成本！",
+                    currentBudget.getMonth(),
+                    currentBudget.getLimitAmount(),
+                    currentBudget.getUsedAmount(),
+                    currentBudget.getUsedAmount().subtract(currentBudget.getLimitAmount()));
 
-                sendAlertByRule(rule, title, content);
-            }
+            // 发送告警
+            AlertDTO alert = new AlertDTO();
+            alert.setType(AlertType.COST);
+            alert.setTitle(title);
+            alert.setContent(content);
+            alert.setRecipient(recipient);
+            alert.setChannelType(NotificationChannelType.EMAIL);
+
+            sendAlert(alert);
         }
 
         log.debug("成本告警检查完成");
@@ -163,17 +182,27 @@ public class AlertServiceImpl implements AlertService {
     public void checkErrorRateAlerts(int windowMinutes, double errorRateThreshold) {
         log.debug("开始检查错误率告警: windowMinutes={}, threshold={}", windowMinutes, errorRateThreshold);
 
-        // 获取启用的错误率告警规则
-        List<AlertRuleDO> errorRateRules = getEnabledRulesByType(AlertType.ERROR_RATE);
+        // 从系统设置获取告警配置
+        var alertSettings = systemSettingsService.getAlertSettings();
 
-        if (errorRateRules.isEmpty()) {
-            log.debug("没有启用的错误率告警规则");
+        // 检查错误率告警是否启用
+        if (!Boolean.TRUE.equals(alertSettings.getErrorRateAlertEnabled())) {
+            log.debug("错误率告警未启用");
             return;
         }
 
+        // 使用系统设置中的时间窗口和阈值（如果配置了的话）
+        int effectiveWindowMinutes = alertSettings.getErrorRateWindow() != null
+            ? alertSettings.getErrorRateWindow()
+            : windowMinutes;
+
+        double effectiveThreshold = alertSettings.getErrorRateThreshold() != null
+            ? alertSettings.getErrorRateThreshold() / 100.0  // 转换为小数，如10% -> 0.1
+            : errorRateThreshold;
+
         // 计算时间窗口
         LocalDateTime endTime = LocalDateTime.now();
-        LocalDateTime startTime = endTime.minusMinutes(windowMinutes);
+        LocalDateTime startTime = endTime.minusMinutes(effectiveWindowMinutes);
 
         // 查询时间窗口内的所有日志
         LambdaQueryWrapper<AgentLogDO> wrapper = new LambdaQueryWrapper<>();
@@ -198,30 +227,41 @@ public class AlertServiceImpl implements AlertService {
 
         log.debug("错误率统计: total={}, failed={}, errorRate={}", totalRequests, failedRequests, errorRate);
 
-        for (AlertRuleDO rule : errorRateRules) {
-            double threshold = rule.getThreshold().doubleValue();
-
-            // 检查是否超过阈值
-            if (errorRate >= threshold) {
-                String title = StrUtil.format("【异常告警】系统错误率已达{}%",
-                        String.format("%.2f", errorRate * 100));
-
-                String content = StrUtil.format(
-                        "系统异常告警\n\n" +
-                        "时间窗口：最近{}分钟\n" +
-                        "总请求数：{}\n" +
-                        "失败请求数：{}\n" +
-                        "当前错误率：{}%\n" +
-                        "告警阈值：{}%\n\n" +
-                        "请及时排查系统异常！",
-                        windowMinutes,
-                        totalRequests,
-                        failedRequests,
-                        String.format("%.2f", errorRate * 100),
-                        String.format("%.0f", threshold * 100));
-
-                sendAlertByRule(rule, title, content);
+        // 检查是否超过阈值
+        if (errorRate >= effectiveThreshold) {
+            // 获取邮件配置中的默认收件人
+            var emailSettings = systemSettingsService.getEmailSettings();
+            String recipient = emailSettings.getDefaultRecipients();
+            if (StrUtil.isBlank(recipient)) {
+                recipient = defaultRecipient;
             }
+
+            String title = StrUtil.format("【异常告警】系统错误率已达{}%",
+                    String.format("%.2f", errorRate * 100));
+
+            String content = StrUtil.format(
+                    "系统异常告警\n\n" +
+                    "时间窗口：最近{}分钟\n" +
+                    "总请求数：{}\n" +
+                    "失败请求数：{}\n" +
+                    "当前错误率：{}%\n" +
+                    "告警阈值：{}%\n\n" +
+                    "请及时排查系统异常！",
+                    effectiveWindowMinutes,
+                    totalRequests,
+                    failedRequests,
+                    String.format("%.2f", errorRate * 100),
+                    String.format("%.0f", effectiveThreshold * 100));
+
+            // 发送告警
+            AlertDTO alert = new AlertDTO();
+            alert.setType(AlertType.ERROR_RATE);
+            alert.setTitle(title);
+            alert.setContent(content);
+            alert.setRecipient(recipient);
+            alert.setChannelType(NotificationChannelType.EMAIL);
+
+            sendAlert(alert);
         }
 
         log.debug("错误率告警检查完成");
@@ -232,17 +272,23 @@ public class AlertServiceImpl implements AlertService {
     public void sendApprovalReminders(int reminderMinutes) {
         log.debug("开始发送审批提醒: reminderMinutes={}", reminderMinutes);
 
-        // 获取启用的审批提醒规则
-        List<AlertRuleDO> approvalRules = getEnabledRulesByType(AlertType.APPROVAL);
+        // 从系统设置获取告警配置
+        var alertSettings = systemSettingsService.getAlertSettings();
 
-        if (approvalRules.isEmpty()) {
-            log.debug("没有启用的审批提醒规则");
+        // 检查审批提醒是否启用
+        if (!Boolean.TRUE.equals(alertSettings.getApprovalReminderEnabled())) {
+            log.debug("审批提醒未启用");
             return;
         }
 
+        // 使用系统设置中的提醒时间（如果配置了的话）
+        int effectiveReminderMinutes = alertSettings.getApprovalReminderMinutes() != null
+            ? alertSettings.getApprovalReminderMinutes()
+            : reminderMinutes;
+
         // 计算即将过期的时间范围
         LocalDateTime now = LocalDateTime.now();
-        LocalDateTime reminderTime = now.plusMinutes(reminderMinutes);
+        LocalDateTime reminderTime = now.plusMinutes(effectiveReminderMinutes);
 
         // 查询即将过期的待审批请求
         LambdaQueryWrapper<ApprovalRequestDO> wrapper = new LambdaQueryWrapper<>();
@@ -259,35 +305,48 @@ public class AlertServiceImpl implements AlertService {
 
         log.info("发现{}个即将过期的审批请求", pendingApprovals.size());
 
+        // 获取邮件配置中的默认收件人
+        var emailSettings = systemSettingsService.getEmailSettings();
+        String recipient = emailSettings.getDefaultRecipients();
+        if (StrUtil.isBlank(recipient)) {
+            recipient = defaultRecipient;
+        }
+
         for (ApprovalRequestDO approval : pendingApprovals) {
-            for (AlertRuleDO rule : approvalRules) {
-                String title = StrUtil.format("【审批提醒】审批请求即将过期");
+            String title = "【审批提醒】审批请求即将过期";
 
-                // 计算剩余时间
-                long remainingMinutes = java.time.Duration.between(now, approval.getExpiresAt()).toMinutes();
+            // 计算剩余时间
+            long remainingMinutes = java.time.Duration.between(now, approval.getExpiresAt()).toMinutes();
 
-                String content = StrUtil.format(
-                        "审批过期提醒\n\n" +
-                        "审批ID：{}\n" +
-                        "Agent ID：{}\n" +
-                        "策略ID：{}\n" +
-                        "创建时间：{}\n" +
-                        "过期时间：{}\n" +
-                        "剩余时间：{}分钟\n\n" +
-                        "请尽快处理该审批请求！",
-                        approval.getId(),
-                        approval.getAgentId(),
-                        approval.getPolicyId(),
-                        approval.getCreatedAt(),
-                        approval.getExpiresAt(),
-                        remainingMinutes);
+            String content = StrUtil.format(
+                    "审批过期提醒\n\n" +
+                    "审批ID：{}\n" +
+                    "Agent ID：{}\n" +
+                    "策略ID：{}\n" +
+                    "创建时间：{}\n" +
+                    "过期时间：{}\n" +
+                    "剩余时间：{}分钟\n\n" +
+                    "请尽快处理该审批请求！",
+                    approval.getId(),
+                    approval.getAgentId(),
+                    approval.getPolicyId(),
+                    approval.getCreatedAt(),
+                    approval.getExpiresAt(),
+                    remainingMinutes);
 
-                sendAlertByRule(rule, title, content);
-            }
+            // 发送告警
+            AlertDTO alert = new AlertDTO();
+            alert.setType(AlertType.APPROVAL);
+            alert.setTitle(title);
+            alert.setContent(content);
+            alert.setRecipient(recipient);
+            alert.setChannelType(NotificationChannelType.EMAIL);
+
+            sendAlert(alert);
         }
 
         // 同时发送新的待审批请求提醒
-        sendNewApprovalReminders(approvalRules);
+        sendNewApprovalReminders(recipient);
 
         log.debug("审批提醒发送完成");
     }
@@ -295,9 +354,9 @@ public class AlertServiceImpl implements AlertService {
     /**
      * 发送新的待审批请求提醒
      *
-     * @param approvalRules 审批提醒规则列表
+     * @param recipient 接收人邮箱
      */
-    private void sendNewApprovalReminders(List<AlertRuleDO> approvalRules) {
+    private void sendNewApprovalReminders(String recipient) {
         // 查询最近创建的待审批请求（最近5分钟内创建的）
         LocalDateTime fiveMinutesAgo = LocalDateTime.now().minusMinutes(5);
 
@@ -314,98 +373,31 @@ public class AlertServiceImpl implements AlertService {
         log.info("发现{}个新的待审批请求", newApprovals.size());
 
         for (ApprovalRequestDO approval : newApprovals) {
-            for (AlertRuleDO rule : approvalRules) {
-                String title = "【审批提醒】有新的审批请求待处理";
+            String title = "【审批提醒】有新的审批请求待处理";
 
-                String content = StrUtil.format(
-                        "新审批请求通知\n\n" +
-                        "审批ID：{}\n" +
-                        "Agent ID：{}\n" +
-                        "策略ID：{}\n" +
-                        "创建时间：{}\n" +
-                        "过期时间：{}\n\n" +
-                        "请及时处理该审批请求。",
-                        approval.getId(),
-                        approval.getAgentId(),
-                        approval.getPolicyId(),
-                        approval.getCreatedAt(),
-                        approval.getExpiresAt());
+            String content = StrUtil.format(
+                    "新审批请求通知\n\n" +
+                    "审批ID：{}\n" +
+                    "Agent ID：{}\n" +
+                    "策略ID：{}\n" +
+                    "创建时间：{}\n" +
+                    "过期时间：{}\n\n" +
+                    "请及时处理该审批请求。",
+                    approval.getId(),
+                    approval.getAgentId(),
+                    approval.getPolicyId(),
+                    approval.getCreatedAt(),
+                    approval.getExpiresAt());
 
-                sendAlertByRule(rule, title, content);
-            }
-        }
-    }
+            // 发送告警
+            AlertDTO alert = new AlertDTO();
+            alert.setType(AlertType.APPROVAL);
+            alert.setTitle(title);
+            alert.setContent(content);
+            alert.setRecipient(recipient);
+            alert.setChannelType(NotificationChannelType.EMAIL);
 
-    /**
-     * 获取指定类型的启用告警规则
-     *
-     * @param type 告警类型
-     * @return 告警规则列表
-     */
-    private List<AlertRuleDO> getEnabledRulesByType(AlertType type) {
-        LambdaQueryWrapper<AlertRuleDO> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(AlertRuleDO::getType, type)
-               .eq(AlertRuleDO::getEnabled, true);
-        return alertRuleMapper.selectList(wrapper);
-    }
-
-    /**
-     * 根据告警规则发送告警
-     *
-     * @param rule    告警规则
-     * @param title   告警标题
-     * @param content 告警内容
-     */
-    private void sendAlertByRule(AlertRuleDO rule, String title, String content) {
-        // 解析渠道配置获取接收人
-        String recipient = parseRecipient(rule.getChannelConfig());
-
-        if (StrUtil.isBlank(recipient)) {
-            recipient = defaultRecipient;
-        }
-
-        AlertDTO alert = new AlertDTO();
-        alert.setRuleId(rule.getId());
-        alert.setType(rule.getType());
-        alert.setTitle(title);
-        alert.setContent(content);
-        alert.setRecipient(recipient);
-        alert.setChannelType(rule.getChannelType());
-
-        sendAlert(alert);
-    }
-
-    /**
-     * 解析渠道配置获取接收人
-     *
-     * @param channelConfig 渠道配置（JSON格式）
-     * @return 接收人
-     */
-    private String parseRecipient(String channelConfig) {
-        if (StrUtil.isBlank(channelConfig)) {
-            return null;
-        }
-
-        try {
-            // 尝试解析 JSON 格式
-            if (channelConfig.startsWith("{")) {
-                Map<String, Object> config = JSONUtil.toBean(channelConfig, Map.class);
-                // 支持 email、url、recipient 等字段
-                if (config.containsKey("email")) {
-                    return String.valueOf(config.get("email"));
-                }
-                if (config.containsKey("url")) {
-                    return String.valueOf(config.get("url"));
-                }
-                if (config.containsKey("recipient")) {
-                    return String.valueOf(config.get("recipient"));
-                }
-            }
-            // 如果不是 JSON，直接返回原值（可能是邮箱地址或 URL）
-            return channelConfig;
-        } catch (Exception e) {
-            log.warn("解析渠道配置失败: config={}, error={}", channelConfig, e.getMessage());
-            return channelConfig;
+            sendAlert(alert);
         }
     }
 }
