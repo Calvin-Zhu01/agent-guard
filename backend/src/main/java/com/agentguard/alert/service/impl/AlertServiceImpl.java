@@ -25,8 +25,6 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.actuate.health.Health;
-import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -51,7 +49,6 @@ public class AlertServiceImpl implements AlertService {
     private final BudgetService budgetService;
     private final AgentLogMapper agentLogMapper;
     private final ApprovalMapper approvalMapper;
-    private final List<HealthIndicator> healthIndicators;
 
     @Value("${alert.default-recipient:admin@agentguard.com}")
     private String defaultRecipient;
@@ -337,65 +334,6 @@ public class AlertServiceImpl implements AlertService {
                 sendAlertByRule(rule, title, content);
             }
         }
-    }
-
-
-    @Override
-    public void checkSystemHealth() {
-        log.debug("开始检查系统健康状态...");
-
-        // 获取启用的系统告警规则
-        List<AlertRuleDO> systemRules = getEnabledRulesByType(AlertType.SYSTEM);
-
-        if (systemRules.isEmpty()) {
-            log.debug("没有启用的系统告警规则");
-            return;
-        }
-
-        // 检查所有健康指示器
-        StringBuilder unhealthyComponents = new StringBuilder();
-        int unhealthyCount = 0;
-
-        for (HealthIndicator indicator : healthIndicators) {
-            try {
-                Health health = indicator.health();
-                if (!org.springframework.boot.actuate.health.Status.UP.equals(health.getStatus())) {
-                    unhealthyCount++;
-                    String componentName = indicator.getClass().getSimpleName().replace("HealthIndicator", "");
-                    unhealthyComponents.append(StrUtil.format("- {}: {} ({})\n",
-                            componentName,
-                            health.getStatus(),
-                            health.getDetails()));
-                }
-            } catch (Exception e) {
-                unhealthyCount++;
-                String componentName = indicator.getClass().getSimpleName().replace("HealthIndicator", "");
-                unhealthyComponents.append(StrUtil.format("- {}: 检查异常 ({})\n",
-                        componentName,
-                        e.getMessage()));
-                log.error("健康检查异常: component={}, error={}", componentName, e.getMessage(), e);
-            }
-        }
-
-        if (unhealthyCount > 0) {
-            for (AlertRuleDO rule : systemRules) {
-                String title = StrUtil.format("【系统告警】发现{}个组件异常", unhealthyCount);
-
-                String content = StrUtil.format(
-                        "系统健康告警\n\n" +
-                        "检查时间：{}\n" +
-                        "异常组件数：{}\n\n" +
-                        "异常详情：\n{}\n" +
-                        "请及时排查系统问题！",
-                        LocalDateTime.now(),
-                        unhealthyCount,
-                        unhealthyComponents.toString());
-
-                sendAlertByRule(rule, title, content);
-            }
-        }
-
-        log.debug("系统健康检查完成: unhealthyCount={}", unhealthyCount);
     }
 
     /**

@@ -86,9 +86,6 @@ alert:
     approval:
       cron: ${ALERT_SCHEDULER_APPROVAL_CRON:0 */10 * * * ?}
       reminder-minutes: ${ALERT_SCHEDULER_APPROVAL_REMINDER:30}
-    # 系统健康检查：每分钟执行一次
-    health:
-      cron: ${ALERT_SCHEDULER_HEALTH_CRON:0 * * * * ?}
 
 # 审批配置
 approval:

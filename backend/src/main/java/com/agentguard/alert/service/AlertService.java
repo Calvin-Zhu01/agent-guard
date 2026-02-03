@@ -39,10 +39,4 @@ public interface AlertService {
      * @param reminderMinutes 提前提醒时间（分钟）
      */
     void sendApprovalReminders(int reminderMinutes);
-
-    /**
-     * 检查系统健康状态
-     * 如果组件异常则发送系统告警
-     */
-    void checkSystemHealth();
 }

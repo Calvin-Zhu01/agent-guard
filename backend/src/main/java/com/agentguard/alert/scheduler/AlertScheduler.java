@@ -10,12 +10,11 @@ import org.springframework.stereotype.Component;
 
 /**
  * 告警定时任务调度器
- * 
+ *
  * 负责定时执行各类告警检查任务：
  * - 成本告警检查
  * - 错误率告警检查
  * - 审批过期提醒
- * - 系统健康检查
  *
  * @author zhuhx
  */
@@ -75,7 +74,7 @@ public class AlertScheduler {
 
     /**
      * 审批过期提醒定时任务
-     * 
+     *
      * 默认每10分钟执行一次，检查即将过期的审批请求
      * 可通过 alert.scheduler.approval.cron 配置调整执行频率
      */
@@ -87,23 +86,6 @@ public class AlertScheduler {
             log.info("审批过期提醒定时任务执行完成");
         } catch (Exception e) {
             log.error("审批过期提醒定时任务执行失败: {}", e.getMessage(), e);
-        }
-    }
-
-    /**
-     * 系统健康检查定时任务
-     * 
-     * 默认每分钟执行一次，检查系统组件健康状态
-     * 可通过 alert.scheduler.health.cron 配置调整执行频率
-     */
-    @Scheduled(cron = "${alert.scheduler.health.cron:0 * * * * ?}")
-    public void checkSystemHealth() {
-        log.info("开始执行系统健康检查定时任务...");
-        try {
-            alertService.checkSystemHealth();
-            log.info("系统健康检查定时任务执行完成");
-        } catch (Exception e) {
-            log.error("系统健康检查定时任务执行失败: {}", e.getMessage(), e);
         }
     }
 }
