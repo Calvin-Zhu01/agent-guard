@@ -242,6 +242,8 @@ router.afterEach((to) => {
 .main {
   background: #f0f2f5;
   padding: 20px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .menu-badge :deep(.el-badge__content) {

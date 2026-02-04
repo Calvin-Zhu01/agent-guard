@@ -435,6 +435,15 @@ onMounted(() => {
 </template>
 
 <style scoped>
+:deep(.el-card) {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+:deep(.el-card__header) {
+  border-radius: 12px 12px 0 0;
+}
+
 .stat-card {
   cursor: pointer;
   transition: transform 0.2s;

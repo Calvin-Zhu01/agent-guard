@@ -6,6 +6,7 @@
  */
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import CodeBlock from '@/components/CodeBlock.vue'
 import * as policyApi from '@/api/policy'
 import type { Policy, PolicyCreateDTO, PolicyUpdateDTO, PolicyType, PolicyAction, PolicyScope, RequestType } from '@/types/policy'
 
@@ -141,6 +142,41 @@ const sensitiveFieldOptions = [
   { label: '地址', value: 'address' },
   { label: '姓名', value: 'name' }
 ]
+
+
+// 代码示例常量
+const conditionsFormatExample = `[{ "field": "字段名", "operator": "运算符", "value": "值" }]`
+
+const accessControlExample = `{
+  "urlPattern": "/api/.*",
+  "method": "DELETE",
+  "action": "DENY",
+  "headerConditions": [
+    { "field": "X-Role", "operator": "ne", "value": "admin" }
+  ]
+}`
+
+const approvalExample = `{
+  "urlPattern": "/api/payment/.*",
+  "method": "POST",
+  "bodyConditions": [
+    { "field": "amount", "operator": "gt", "value": 10000 },
+    { "field": "type", "operator": "in", "value": ["transfer", "withdraw"] }
+  ],
+  "headerConditions": [
+    { "field": "X-Risk-Level", "operator": "eq", "value": "high" }
+  ]
+}`
+
+const rateLimitExample = `{
+  "urlPattern": "/api/ai/.*",
+  "method": "POST",
+  "windowSeconds": 60,
+  "maxRequests": 10,
+  "headerConditions": [
+    { "field": "X-Agent-Id", "operator": "eq", "value": "agent-001" }
+  ]
+}`
 
 
 /**
@@ -961,9 +997,9 @@ onMounted(() => {
                     <li><code>bodyConditions</code> - 请求体字段条件数组</li>
                     <li><code>headerConditions</code> - 请求头条件数组</li>
                   </ul>
-                  
+
                   <p><strong>bodyConditions / headerConditions 格式：</strong></p>
-                  <pre class="code-block">[{ "field": "字段名", "operator": "运算符", "value": "值" }]</pre>
+                  <CodeBlock :code="conditionsFormatExample" language="json" />
                   <p>字段名支持嵌套路径，如 <code>user.profile.name</code></p>
                   
                   <p><strong>支持的运算符：</strong></p>
@@ -975,16 +1011,9 @@ onMounted(() => {
                     <li><code>in</code> - 在列表中 | <code>notIn</code> - 不在列表中</li>
                     <li><code>isNull</code> - 为空 | <code>isNotNull</code> - 不为空</li>
                   </ul>
-                  
+
                   <p><strong>示例：</strong>拒绝非管理员的删除操作</p>
-                  <pre class="code-block">{
-  "urlPattern": "/api/.*",
-  "method": "DELETE",
-  "action": "DENY",
-  "headerConditions": [
-    { "field": "X-Role", "operator": "ne", "value": "admin" }
-  ]
-}</pre>
+                  <CodeBlock :code="accessControlExample" language="json" />
                   <p class="example-explain">
                     当请求同时满足以下条件时触发：URL 匹配 /api/ 开头、HTTP 方法为 DELETE、请求头 X-Role 不等于 admin
                   </p>
@@ -1068,9 +1097,9 @@ onMounted(() => {
                     <li><code>bodyConditions</code> - 请求体字段条件数组</li>
                     <li><code>headerConditions</code> - 请求头条件数组</li>
                   </ul>
-                  
+
                   <p><strong>bodyConditions / headerConditions 格式：</strong></p>
-                  <pre class="code-block">[{ "field": "字段名", "operator": "运算符", "value": "值" }]</pre>
+                  <CodeBlock :code="conditionsFormatExample" language="json" />
                   <p>字段名支持嵌套路径，如 <code>user.profile.name</code></p>
                   
                   <p><strong>支持的运算符：</strong></p>
@@ -1082,19 +1111,9 @@ onMounted(() => {
                     <li><code>in</code> - 在列表中 | <code>notIn</code> - 不在列表中</li>
                     <li><code>isNull</code> - 为空 | <code>isNotNull</code> - 不为空</li>
                   </ul>
-                  
+
                   <p><strong>完整示例：</strong></p>
-                  <pre class="code-block">{
-  "urlPattern": "/api/payment/.*",
-  "method": "POST",
-  "bodyConditions": [
-    { "field": "amount", "operator": "gt", "value": 10000 },
-    { "field": "type", "operator": "in", "value": ["transfer", "withdraw"] }
-  ],
-  "headerConditions": [
-    { "field": "X-Risk-Level", "operator": "eq", "value": "high" }
-  ]
-}</pre>
+                  <CodeBlock :code="approvalExample" language="json" />
                   <p class="example-explain">
                     <strong>示例含义：</strong>当请求同时满足以下所有条件时触发审批：<br/>
                     1. URL 匹配 <code>/api/payment/</code> 开头的路径<br/>
@@ -1209,15 +1228,7 @@ onMounted(() => {
                   </ul>
 
                   <p><strong>示例：</strong>特定 Agent 每分钟最多调用 AI 接口 10 次</p>
-                  <pre class="code-block">{
-  "urlPattern": "/api/ai/.*",
-  "method": "POST",
-  "windowSeconds": 60,
-  "maxRequests": 10,
-  "headerConditions": [
-    { "field": "X-Agent-Id", "operator": "eq", "value": "agent-001" }
-  ]
-}</pre>
+                  <CodeBlock :code="rateLimitExample" language="json" />
                   <p class="example-explain">
                     当请求同时满足以下条件时触发限流：<br/>
                     1. URL 匹配 <code>/api/ai/</code> 开头的路径<br/>
@@ -1260,6 +1271,15 @@ onMounted(() => {
 </template>
 
 <style scoped>
+:deep(.el-card) {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+:deep(.el-card__header) {
+  border-radius: 12px 12px 0 0;
+}
+
 .card-header {
   display: flex;
   justify-content: space-between;
@@ -1341,17 +1361,6 @@ onMounted(() => {
   padding: 2px 6px;
   border-radius: 3px;
   font-family: monospace;
-}
-
-.code-block {
-  background: #f5f7fa;
-  padding: 12px;
-  border-radius: 4px;
-  font-family: monospace;
-  font-size: 12px;
-  overflow-x: auto;
-  white-space: pre;
-  margin: 8px 0;
 }
 
 .example-explain {

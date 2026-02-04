@@ -389,10 +389,6 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.stats-page {
-  padding: 20px;
-}
-
 .overview-row {
   margin-bottom: 20px;
 }
@@ -402,6 +398,8 @@ onMounted(() => {
   align-items: center;
   padding: 20px;
   margin-bottom: 20px;
+  border-radius: 12px;
+  overflow: hidden;
 }
 
 .overview-card :deep(.el-card__body) {
@@ -441,6 +439,12 @@ onMounted(() => {
 
 .budget-card {
   margin-bottom: 20px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.budget-card :deep(.el-card__header) {
+  border-radius: 12px 12px 0 0;
 }
 
 .card-header {
@@ -482,6 +486,12 @@ onMounted(() => {
 
 .chart-card {
   margin-bottom: 20px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.chart-card :deep(.el-card__header) {
+  border-radius: 12px 12px 0 0;
 }
 
 .chart-container {
@@ -491,6 +501,12 @@ onMounted(() => {
 
 .rank-card {
   margin-bottom: 20px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.rank-card :deep(.el-card__header) {
+  border-radius: 12px 12px 0 0;
 }
 
 .cost-value {

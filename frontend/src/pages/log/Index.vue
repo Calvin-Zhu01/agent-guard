@@ -6,6 +6,7 @@
  */
 import { ref, onMounted, computed, watch } from 'vue'
 import { Refresh, View } from '@element-plus/icons-vue'
+import CodeBlock from '@/components/CodeBlock.vue'
 import * as logApi from '@/api/log'
 import * as agentApi from '@/api/agent'
 import type { AgentLog, AgentLogListParams, ResponseStatus, PolicyAction, PolicyType, RequestType } from '@/types/log'
@@ -661,7 +662,7 @@ watch(activeTab, () => {
           <div class="detail-panel request-summary" v-if="formattedRequestSummary">
             <div class="panel-title">请求摘要 (Request Summary)</div>
             <div class="panel-content">
-              <pre>{{ formattedRequestSummary }}</pre>
+              <CodeBlock :code="formattedRequestSummary" language="json" />
             </div>
           </div>
         </template>
@@ -726,14 +727,14 @@ watch(activeTab, () => {
               <div class="detail-panel request-headers">
                 <div class="panel-title">请求头 (Request Headers)</div>
                 <div class="panel-content">
-                  <pre v-if="formattedRequestHeaders">{{ formattedRequestHeaders }}</pre>
+                  <CodeBlock v-if="formattedRequestHeaders" :code="formattedRequestHeaders" language="json" />
                   <el-empty v-else description="无请求头数据" :image-size="60" />
                 </div>
               </div>
               <div class="detail-panel request-body">
                 <div class="panel-title">请求体 (Request Body)</div>
                 <div class="panel-content">
-                  <pre v-if="formattedRequestBody">{{ formattedRequestBody }}</pre>
+                  <CodeBlock v-if="formattedRequestBody" :code="formattedRequestBody" language="json" />
                   <el-empty v-else description="无请求体数据" :image-size="60" />
                 </div>
               </div>
@@ -743,7 +744,7 @@ watch(activeTab, () => {
               <div class="detail-panel response-body">
                 <div class="panel-title">响应体 (Response Body)</div>
                 <div class="panel-content">
-                  <pre v-if="formattedResponseBody">{{ formattedResponseBody }}</pre>
+                  <CodeBlock v-if="formattedResponseBody" :code="formattedResponseBody" language="json" />
                   <el-empty v-else description="无响应体数据" :image-size="60" />
                 </div>
               </div>
@@ -756,6 +757,15 @@ watch(activeTab, () => {
 </template>
 
 <style scoped>
+:deep(.el-card) {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+:deep(.el-card__header) {
+  border-radius: 12px 12px 0 0;
+}
+
 .card-header {
   display: flex;
   justify-content: space-between;
@@ -905,7 +915,7 @@ watch(activeTab, () => {
 .detail-panel {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--el-border-color-light);
+  border: 1px solid #dcdfe6;
   border-radius: 4px;
   overflow: hidden;
 }
@@ -932,23 +942,23 @@ watch(activeTab, () => {
   padding: 12px 16px;
   font-weight: 600;
   background-color: var(--el-fill-color-light);
-  border-bottom: 1px solid var(--el-border-color-light);
 }
 
 .panel-content {
   flex: 1;
-  padding: 16px;
   overflow: auto;
   background-color: var(--el-fill-color-blank);
 }
 
-.panel-content pre {
-  margin: 0;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-  font-size: 13px;
-  line-height: 1.5;
+/* 代码块在panel中时移除边框，与标题融为一体 */
+.panel-content :deep(.code-block) {
+  border: none;
+  border-radius: 0;
+}
+
+/* el-empty保持padding */
+.panel-content :deep(.el-empty) {
+  padding: 16px;
 }
 
 /* 响应式布局 */

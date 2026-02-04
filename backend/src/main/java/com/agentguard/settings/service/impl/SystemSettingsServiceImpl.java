@@ -98,6 +98,7 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
         dto.setWeComWebhook(settings.get("wecom_webhook"));
         dto.setCustomWebhookEnabled(Boolean.parseBoolean(settings.getOrDefault("custom_webhook_enabled", "false")));
         dto.setCustomWebhookUrl(settings.get("custom_webhook_url"));
+        dto.setCustomWebhookSecret(settings.get("custom_webhook_secret"));
         return dto;
     }
 
@@ -112,6 +113,7 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
         settings.put("wecom_webhook", dto.getWeComWebhook());
         settings.put("custom_webhook_enabled", dto.getCustomWebhookEnabled());
         settings.put("custom_webhook_url", dto.getCustomWebhookUrl());
+        settings.put("custom_webhook_secret", dto.getCustomWebhookSecret());
 
         saveSettings(CATEGORY_WEBHOOK, settings);
     }
@@ -122,11 +124,14 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
         AlertSettingsDTO dto = new AlertSettingsDTO();
         dto.setCostAlertEnabled(Boolean.parseBoolean(settings.getOrDefault("cost_alert_enabled", "true")));
         dto.setCostThreshold(parseInteger(settings.get("cost_threshold"), 85));
+        dto.setCostAlertCooldownMinutes(parseInteger(settings.get("cost_alert_cooldown_minutes"), 60));
         dto.setErrorRateAlertEnabled(Boolean.parseBoolean(settings.getOrDefault("error_rate_alert_enabled", "true")));
         dto.setErrorRateThreshold(parseInteger(settings.get("error_rate_threshold"), 10));
         dto.setErrorRateWindow(parseInteger(settings.get("error_rate_window"), 60));
+        dto.setErrorRateAlertCooldownMinutes(parseInteger(settings.get("error_rate_alert_cooldown_minutes"), 30));
         dto.setApprovalReminderEnabled(Boolean.parseBoolean(settings.getOrDefault("approval_reminder_enabled", "true")));
         dto.setApprovalReminderMinutes(parseInteger(settings.get("approval_reminder_minutes"), 30));
+        dto.setApprovalReminderCooldownMinutes(parseInteger(settings.get("approval_reminder_cooldown_minutes"), 10));
         return dto;
     }
 
@@ -136,11 +141,14 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
         Map<String, Object> settings = new HashMap<>();
         settings.put("cost_alert_enabled", dto.getCostAlertEnabled());
         settings.put("cost_threshold", dto.getCostThreshold());
+        settings.put("cost_alert_cooldown_minutes", dto.getCostAlertCooldownMinutes());
         settings.put("error_rate_alert_enabled", dto.getErrorRateAlertEnabled());
         settings.put("error_rate_threshold", dto.getErrorRateThreshold());
         settings.put("error_rate_window", dto.getErrorRateWindow());
+        settings.put("error_rate_alert_cooldown_minutes", dto.getErrorRateAlertCooldownMinutes());
         settings.put("approval_reminder_enabled", dto.getApprovalReminderEnabled());
         settings.put("approval_reminder_minutes", dto.getApprovalReminderMinutes());
+        settings.put("approval_reminder_cooldown_minutes", dto.getApprovalReminderCooldownMinutes());
 
         saveSettings(CATEGORY_ALERT, settings);
     }

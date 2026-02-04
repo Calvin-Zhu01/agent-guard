@@ -18,6 +18,7 @@ import com.agentguard.budget.service.BudgetService;
 import com.agentguard.log.entity.AgentLogDO;
 import com.agentguard.log.enums.ResponseStatus;
 import com.agentguard.log.mapper.AgentLogMapper;
+import com.agentguard.settings.dto.AlertSettingsDTO;
 import com.agentguard.settings.service.SystemSettingsService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.agentguard.alert.enums.NotificationChannelType;
@@ -86,11 +87,17 @@ public class AlertServiceImpl implements AlertService {
         log.debug("开始检查成本告警...");
 
         // 从系统设置获取告警配置
-        var alertSettings = systemSettingsService.getAlertSettings();
+        AlertSettingsDTO alertSettings = systemSettingsService.getAlertSettings();
 
         // 检查成本告警是否启用
         if (!Boolean.TRUE.equals(alertSettings.getCostAlertEnabled())) {
             log.debug("成本告警未启用");
+            return;
+        }
+
+        // 检查是否在冷却期内
+        if (isInCooldownPeriod(AlertType.COST, alertSettings.getCostAlertCooldownMinutes())) {
+            log.debug("成本告警在冷却期内，跳过本次通知");
             return;
         }
 
@@ -180,10 +187,10 @@ public class AlertServiceImpl implements AlertService {
 
     @Override
     public void checkErrorRateAlerts(int windowMinutes, double errorRateThreshold) {
-        log.debug("开始检查错误率告警: windowMinutes={}, threshold={}", windowMinutes, errorRateThreshold);
+        log.debug("开始检查错误率告警...");
 
         // 从系统设置获取告警配置
-        var alertSettings = systemSettingsService.getAlertSettings();
+        AlertSettingsDTO alertSettings = systemSettingsService.getAlertSettings();
 
         // 检查错误率告警是否启用
         if (!Boolean.TRUE.equals(alertSettings.getErrorRateAlertEnabled())) {
@@ -191,7 +198,13 @@ public class AlertServiceImpl implements AlertService {
             return;
         }
 
-        // 使用系统设置中的时间窗口和阈值（如果配置了的话）
+        // 检查是否在冷却期内
+        if (isInCooldownPeriod(AlertType.ERROR_RATE, alertSettings.getErrorRateAlertCooldownMinutes())) {
+            log.debug("错误率告警在冷却期内，跳过本次通知");
+            return;
+        }
+
+        // 使用系统设置中的时间窗口和阈值
         int effectiveWindowMinutes = alertSettings.getErrorRateWindow() != null
             ? alertSettings.getErrorRateWindow()
             : windowMinutes;
@@ -199,6 +212,7 @@ public class AlertServiceImpl implements AlertService {
         double effectiveThreshold = alertSettings.getErrorRateThreshold() != null
             ? alertSettings.getErrorRateThreshold() / 100.0  // 转换为小数，如10% -> 0.1
             : errorRateThreshold;
+        log.debug("错误率告警： windowMinutes={}, threshold={}", effectiveWindowMinutes, effectiveThreshold);
 
         // 计算时间窗口
         LocalDateTime endTime = LocalDateTime.now();
@@ -270,7 +284,7 @@ public class AlertServiceImpl implements AlertService {
 
     @Override
     public void sendApprovalReminders(int reminderMinutes) {
-        log.debug("开始发送审批提醒: reminderMinutes={}", reminderMinutes);
+        log.debug("开始发送审批提醒...");
 
         // 从系统设置获取告警配置
         var alertSettings = systemSettingsService.getAlertSettings();
@@ -281,10 +295,17 @@ public class AlertServiceImpl implements AlertService {
             return;
         }
 
-        // 使用系统设置中的提醒时间（如果配置了的话）
+        // 检查是否在冷却期内
+        if (isInCooldownPeriod(AlertType.APPROVAL, alertSettings.getApprovalReminderCooldownMinutes())) {
+            log.debug("审批提醒在冷却期内，跳过本次通知");
+            return;
+        }
+
+        // 使用系统设置中的提醒时间
         int effectiveReminderMinutes = alertSettings.getApprovalReminderMinutes() != null
             ? alertSettings.getApprovalReminderMinutes()
             : reminderMinutes;
+        log.debug("审批提醒: reminderMinutes={}", effectiveReminderMinutes);
 
         // 计算即将过期的时间范围
         LocalDateTime now = LocalDateTime.now();
@@ -399,5 +420,45 @@ public class AlertServiceImpl implements AlertService {
 
             sendAlert(alert);
         }
+    }
+
+    /**
+     * 检查指定类型的告警是否在冷却期内
+     *
+     * @param alertType 告警类型
+     * @param cooldownMinutes 冷却时间（分钟）
+     * @return true-在冷却期内，false-不在冷却期内
+     */
+    private boolean isInCooldownPeriod(AlertType alertType, Integer cooldownMinutes) {
+        if (cooldownMinutes == null || cooldownMinutes <= 0) {
+            return false;
+        }
+
+        // 查询最近一次成功发送的相同类型告警
+        LambdaQueryWrapper<AlertHistoryDO> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(AlertHistoryDO::getType, alertType)
+               .eq(AlertHistoryDO::getStatus, AlertStatus.SUCCESS)
+               .orderByDesc(AlertHistoryDO::getCreatedAt)
+               .last("LIMIT 1");
+
+        AlertHistoryDO lastAlert = alertHistoryMapper.selectOne(wrapper);
+
+        if (lastAlert == null) {
+            // 没有历史记录，不在冷却期
+            return false;
+        }
+
+        // 计算距离上次发送的时间（分钟）
+        LocalDateTime lastSentTime = lastAlert.getCreatedAt();
+        LocalDateTime now = LocalDateTime.now();
+        long minutesSinceLastSent = java.time.Duration.between(lastSentTime, now).toMinutes();
+
+        boolean inCooldown = minutesSinceLastSent < cooldownMinutes;
+        if (inCooldown) {
+            log.debug("告警类型 {} 在冷却期内，上次发送时间: {}, 已过去 {} 分钟，冷却时间: {} 分钟",
+                    alertType, lastSentTime, minutesSinceLastSent, cooldownMinutes);
+        }
+
+        return inCooldown;
     }
 }

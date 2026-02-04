@@ -288,6 +288,12 @@ INSERT INTO system_settings (id, category, setting_key, setting_value, descripti
 (UUID(), 'alert_webhook', 'dingtalk_secret', '', '钉钉机器人签名密钥', TRUE),
 (UUID(), 'alert_webhook', 'wecom_enabled', 'false', '企业微信机器人是否启用', FALSE),
 (UUID(), 'alert_webhook', 'wecom_webhook', '', '企业微信机器人Webhook地址', FALSE),
+
+-- 告警冷却时间配置
+(UUID(), 'alert_config', 'cost_alert_cooldown_minutes', '60', '成本告警通知冷却时间（分钟）', FALSE),
+(UUID(), 'alert_config', 'error_rate_alert_cooldown_minutes', '30', '错误率告警通知冷却时间（分钟）', FALSE),
+(UUID(), 'alert_config', 'approval_reminder_cooldown_minutes', '10', '审批提醒通知冷却时间（分钟）', FALSE),
+
 (UUID(), 'alert_webhook', 'custom_webhook_enabled', 'false', '自定义Webhook是否启用', FALSE),
 (UUID(), 'alert_webhook', 'custom_webhook_url', '', '自定义Webhook地址', FALSE),
 

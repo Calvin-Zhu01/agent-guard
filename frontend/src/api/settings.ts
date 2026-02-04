@@ -40,6 +40,7 @@ export interface WebhookSettings {
   weComWebhook: string
   customWebhookEnabled: boolean
   customWebhookUrl: string
+  customWebhookSecret: string
 }
 
 export function getWebhookSettings() {
@@ -55,11 +56,14 @@ export function updateWebhookSettings(data: WebhookSettings) {
 export interface AlertSettings {
   costAlertEnabled: boolean
   costThreshold: number
+  costAlertCooldownMinutes: number
   errorRateAlertEnabled: boolean
   errorRateThreshold: number
   errorRateWindow: number
+  errorRateAlertCooldownMinutes: number
   approvalReminderEnabled: boolean
   approvalReminderMinutes: number
+  approvalReminderCooldownMinutes: number
 }
 
 export function getAlertSettings() {

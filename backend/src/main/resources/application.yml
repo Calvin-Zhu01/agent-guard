@@ -74,18 +74,6 @@ alert:
   # 定时任务配置
   scheduler:
     enabled: ${ALERT_SCHEDULER_ENABLED:true}
-    # 成本告警检查：每小时执行一次
-    cost:
-      cron: ${ALERT_SCHEDULER_COST_CRON:0 0 * * * ?}
-    # 错误率告警检查：每5分钟执行一次
-    error-rate:
-      cron: ${ALERT_SCHEDULER_ERROR_RATE_CRON:0 */5 * * * ?}
-      window-minutes: ${ALERT_SCHEDULER_ERROR_RATE_WINDOW:30}
-      threshold: ${ALERT_SCHEDULER_ERROR_RATE_THRESHOLD:0.1}
-    # 审批过期提醒：每1分钟执行一次
-    approval:
-      cron: ${ALERT_SCHEDULER_APPROVAL_CRON:0 * * * * ?}
-      reminder-minutes: ${ALERT_SCHEDULER_APPROVAL_REMINDER:59}
 
 # 审批配置
 approval:

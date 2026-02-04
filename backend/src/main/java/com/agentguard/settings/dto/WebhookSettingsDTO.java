@@ -32,4 +32,7 @@ public class WebhookSettingsDTO {
 
     @Schema(description = "自定义Webhook地址")
     private String customWebhookUrl;
+
+    @Schema(description = "自定义Webhook接口凭证（Bearer Token）")
+    private String customWebhookSecret;
 }

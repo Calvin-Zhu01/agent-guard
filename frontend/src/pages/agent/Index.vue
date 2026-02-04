@@ -649,6 +649,15 @@ onMounted(() => {
 </template>
 
 <style scoped>
+:deep(.el-card) {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+:deep(.el-card__header) {
+  border-radius: 12px 12px 0 0;
+}
+
 .card-header {
   display: flex;
   justify-content: space-between;

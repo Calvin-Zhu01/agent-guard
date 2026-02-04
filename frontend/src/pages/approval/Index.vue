@@ -232,7 +232,7 @@ onMounted(() => {
             {{ row.agentName || '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="policyName" label="触发策略" min-width="150">
+        <el-table-column prop="policyName" label="触发策略" min-width="200">
           <template #default="{ row }">
             {{ row.policyName || '-' }}
           </template>
@@ -365,6 +365,15 @@ onMounted(() => {
 </template>
 
 <style scoped>
+:deep(.el-card) {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+:deep(.el-card__header) {
+  border-radius: 12px 12px 0 0;
+}
+
 .card-header {
   display: flex;
   justify-content: space-between;
