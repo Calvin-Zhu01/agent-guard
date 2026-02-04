@@ -248,4 +248,25 @@ router.afterEach((to) => {
   top: 2px;
   right: 2px;
 }
+
+/* 菜单项基础样式 - 添加圆角 */
+.aside :deep(.el-menu-item) {
+  border-radius: 8px;
+  margin: 4px 8px;
+}
+
+/* 普通菜单项悬浮样式 - 灰色背景 */
+.aside :deep(.el-menu-item:hover:not(.is-active)) {
+  background-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* 选中的菜单项 - 深蓝色背景 */
+.aside :deep(.el-menu-item.is-active) {
+  background-color: #335075 !important;
+}
+
+/* 选中的菜单项悬浮时保持深蓝色 */
+.aside :deep(.el-menu-item.is-active:hover) {
+  background-color: #1e4d8b !important;
+}
 </style>
