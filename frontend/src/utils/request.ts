@@ -4,9 +4,18 @@
  * @author zhuhx
  */
 import axios from 'axios'
-import type { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
+import type { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig, AxiosRequestConfig } from 'axios'
 import { ElMessage } from 'element-plus'
 import router from '@/router'
+
+// 自定义请求接口，响应拦截器已解包数据
+interface CustomAxiosInstance extends Omit<AxiosInstance, 'get' | 'post' | 'put' | 'delete' | 'patch'> {
+  get<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>
+  post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>
+  put<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>
+  delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>
+  patch<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>
+}
 
 // Token 存储 key
 const TOKEN_KEY = 'agentguard_token'
@@ -36,13 +45,13 @@ function clearAuth(): void {
   })
 }
 
-const request: AxiosInstance = axios.create({
+const request: CustomAxiosInstance = axios.create({
   baseURL: '/api/v1',
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json'
   }
-})
+}) as CustomAxiosInstance
 
 // 请求拦截器
 request.interceptors.request.use(

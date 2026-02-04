@@ -162,6 +162,13 @@ function goToStats() {
 }
 
 /**
+ * 跳转到告警记录页面
+ */
+function goToAlerts() {
+  router.push('/alerts')
+}
+
+/**
  * 获取最近告警
  */
 async function fetchRecentAlerts() {
@@ -358,6 +365,7 @@ onMounted(() => {
           <template #header>
             <div class="card-header">
               <span>最近告警</span>
+              <el-button type="primary" link @click="goToAlerts">更多告警</el-button>
             </div>
           </template>
           <div v-loading="alertsLoading">

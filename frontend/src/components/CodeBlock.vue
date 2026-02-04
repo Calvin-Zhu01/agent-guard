@@ -39,9 +39,21 @@ const highlightedCode = computed(() => {
   // 简单的 JSON 语法高亮
   return props.code
     .replace(/"([^"]+)":/g, '<span style="color: #e96900">"$1"</span>:') // 键名
-    .replace(/:\s*"([^"]*)"/g, ': <span style="color: #50a14f">"$1"</span>') // 字符串值
-    .replace(/:\s*(\d+)/g, ': <span style="color: #0184bc">$1</span>') // 数字值
-    .replace(/:\s*(true|false|null)/g, ': <span style="color: #a626a4">$1</span>') // 布尔值和null
+    .replace(/:\s*"([^"]*)"/g, (match) => {
+      // 保持原始空格，不添加额外空格
+      const colonAndSpaces = match.match(/:\s*/)?.[0] || ': '
+      const stringValue = match.match(/"([^"]*)"/)?.[1] || ''
+      return `${colonAndSpaces}<span style="color: #50a14f">"${stringValue}"</span>`
+    }) // 字符串值
+    .replace(/:\s*(\d+\.?\d*)(,|\s*\}|\s*\])/g, (match, num, suffix) => {
+      // 只匹配独立的数字值，不匹配字符串内的数字
+      const colonAndSpaces = match.match(/:\s*/)?.[0] || ': '
+      return `${colonAndSpaces}<span style="color: #0184bc">${num}</span>${suffix}`
+    }) // 数字值
+    .replace(/:\s*(true|false|null)(,|\s*\}|\s*\])/g, (match, value, suffix) => {
+      const colonAndSpaces = match.match(/:\s*/)?.[0] || ': '
+      return `${colonAndSpaces}<span style="color: #a626a4">${value}</span>${suffix}`
+    }) // 布尔值和null
 })
 </script>
 

@@ -29,6 +29,7 @@ const menuItems = [
   { path: '/policies', title: '策略管理', icon: 'Lock' },
   { path: '/approvals', title: '审批中心', icon: 'Checked' },
   { path: '/stats', title: '成本分析', icon: 'TrendCharts' },
+  { path: '/alerts', title: '告警记录', icon: 'Bell' },
   { path: '/settings', title: '系统设置', icon: 'Setting' }
 ]
 

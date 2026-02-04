@@ -20,7 +20,7 @@ const activeTab = ref<RequestType>('LLM_CALL') // 默认显示LLM调用
 
 const queryParams = ref<AgentLogListParams>({
   current: 1,
-  size: 10,
+  size: 20,
   agentId: undefined,
   responseStatus: undefined
 })
@@ -192,6 +192,15 @@ function handleRefresh() {
 
 function handlePageChange(page: number) {
   queryParams.value.current = page
+  fetchData()
+}
+
+/**
+ * 每页条数变化
+ */
+function handleSizeChange(size: number) {
+  queryParams.value.size = size
+  queryParams.value.current = 1
   fetchData()
 }
 
@@ -509,11 +518,13 @@ watch(activeTab, () => {
 
       <el-pagination
         v-model:current-page="queryParams.current"
-        :page-size="queryParams.size"
+        v-model:page-size="queryParams.size"
         :total="total"
-        layout="total, prev, pager, next"
-        @current-change="handlePageChange"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next, jumper"
         style="margin-top: 20px; justify-content: flex-end"
+        @current-change="handlePageChange"
+        @size-change="handleSizeChange"
       />
     </el-card>
 

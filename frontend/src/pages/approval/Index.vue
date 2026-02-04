@@ -173,6 +173,15 @@ function handlePageChange(page: number) {
 }
 
 /**
+ * 每页条数变化
+ */
+function handleSizeChange(size: number) {
+  queryParams.value.size = size
+  queryParams.value.current = 1
+  fetchData()
+}
+
+/**
  * 判断是否可以操作（只有待审批状态可以操作）
  */
 function canOperate(approval: Approval): boolean {
@@ -255,7 +264,7 @@ onMounted(() => {
             {{ row.approvedAt || '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="100" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleViewDetail(row)">详情</el-button>
             <template v-if="canOperate(row)">
@@ -269,11 +278,13 @@ onMounted(() => {
       <!-- 分页 -->
       <el-pagination
         v-model:current-page="queryParams.current"
-        :page-size="queryParams.size"
+        v-model:page-size="queryParams.size"
         :total="total"
-        layout="total, prev, pager, next"
-        @current-change="handlePageChange"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next, jumper"
         style="margin-top: 20px; justify-content: flex-end"
+        @current-change="handlePageChange"
+        @size-change="handleSizeChange"
       />
     </el-card>
 

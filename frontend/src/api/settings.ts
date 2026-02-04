@@ -18,15 +18,15 @@ export interface EmailSettings {
   defaultRecipients: string
 }
 
-export function getEmailSettings() {
+export function getEmailSettings(): Promise<EmailSettings> {
   return request.get<EmailSettings>('/settings/email')
 }
 
-export function updateEmailSettings(data: EmailSettings) {
+export function updateEmailSettings(data: EmailSettings): Promise<void> {
   return request.put('/settings/email', data)
 }
 
-export function testEmailSettings(data: EmailSettings) {
+export function testEmailSettings(data: EmailSettings): Promise<boolean> {
   return request.post<boolean>('/settings/email/test', data)
 }
 
@@ -43,11 +43,11 @@ export interface WebhookSettings {
   customWebhookSecret: string
 }
 
-export function getWebhookSettings() {
+export function getWebhookSettings(): Promise<WebhookSettings> {
   return request.get<WebhookSettings>('/settings/webhook')
 }
 
-export function updateWebhookSettings(data: WebhookSettings) {
+export function updateWebhookSettings(data: WebhookSettings): Promise<void> {
   return request.put('/settings/webhook', data)
 }
 
@@ -66,10 +66,10 @@ export interface AlertSettings {
   approvalReminderCooldownMinutes: number
 }
 
-export function getAlertSettings() {
+export function getAlertSettings(): Promise<AlertSettings> {
   return request.get<AlertSettings>('/settings/alert')
 }
 
-export function updateAlertSettings(data: AlertSettings) {
+export function updateAlertSettings(data: AlertSettings): Promise<void> {
   return request.put('/settings/alert', data)
 }

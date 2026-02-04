@@ -719,6 +719,15 @@ function handlePageChange(page: number) {
 }
 
 /**
+ * 每页条数变化
+ */
+function handleSizeChange(size: number) {
+  queryParams.value.size = size
+  queryParams.value.current = 1
+  fetchData()
+}
+
+/**
  * 对话框关闭
  */
 function handleDialogClose() {
@@ -872,11 +881,13 @@ onMounted(() => {
       <!-- 分页 -->
       <el-pagination
         v-model:current-page="queryParams.current"
-        :page-size="queryParams.size"
+        v-model:page-size="queryParams.size"
         :total="total"
-        layout="total, prev, pager, next"
-        @current-change="handlePageChange"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next, jumper"
         style="margin-top: 20px; justify-content: flex-end"
+        @current-change="handlePageChange"
+        @size-change="handleSizeChange"
       />
     </el-card>
 
