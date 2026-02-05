@@ -2,6 +2,8 @@ package com.agentguard.alert.service.impl;
 
 import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.core.util.StrUtil;
+import com.agentguard.agent.entity.AgentDO;
+import com.agentguard.agent.mapper.AgentMapper;
 import com.agentguard.alert.channel.NotificationChannel;
 import com.agentguard.alert.channel.NotificationChannelFactory;
 import com.agentguard.alert.dto.AlertDTO;
@@ -18,6 +20,8 @@ import com.agentguard.budget.service.BudgetService;
 import com.agentguard.log.entity.AgentLogDO;
 import com.agentguard.log.enums.ResponseStatus;
 import com.agentguard.log.mapper.AgentLogMapper;
+import com.agentguard.policy.entity.PolicyDO;
+import com.agentguard.policy.mapper.PolicyMapper;
 import com.agentguard.settings.dto.AlertSettingsDTO;
 import com.agentguard.settings.service.SystemSettingsService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -30,6 +34,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 /**
@@ -47,10 +52,15 @@ public class AlertServiceImpl implements AlertService {
     private final BudgetService budgetService;
     private final AgentLogMapper agentLogMapper;
     private final ApprovalMapper approvalMapper;
+    private final AgentMapper agentMapper;
+    private final PolicyMapper policyMapper;
     private final SystemSettingsService systemSettingsService;
 
     @Value("${alert.default-recipient:admin@agentguard.com}")
     private String defaultRecipient;
+
+    /** 时间格式化器 */
+    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     @Override
     public String sendAlert(AlertDTO alert) {
@@ -79,6 +89,64 @@ public class AlertServiceImpl implements AlertService {
 
         log.info("告警记录已保存: id={}, status={}", history.getId(), history.getStatus());
         return history.getId();
+    }
+
+    /**
+     * 发送告警到所有启用的通知渠道
+     *
+     * @param type 告警类型
+     * @param title 告警标题
+     * @param content 告警内容
+     * @param recipient 收件人（用于邮件通知）
+     */
+    private void sendAlertToAllChannels(AlertType type, String title, String content, String recipient) {
+        // 获取webhook配置
+        var webhookSettings = systemSettingsService.getWebhookSettings();
+        var emailSettings = systemSettingsService.getEmailSettings();
+
+        // 发送邮件通知
+        if (Boolean.TRUE.equals(emailSettings.getEnabled()) && StrUtil.isNotBlank(recipient)) {
+            AlertDTO emailAlert = new AlertDTO();
+            emailAlert.setType(type);
+            emailAlert.setTitle(title);
+            emailAlert.setContent(content);
+            emailAlert.setRecipient(recipient);
+            emailAlert.setChannelType(NotificationChannelType.EMAIL);
+            sendAlert(emailAlert);
+        }
+
+        // 发送企业微信通知
+        if (Boolean.TRUE.equals(webhookSettings.getWeComEnabled()) && StrUtil.isNotBlank(webhookSettings.getWeComWebhook())) {
+            AlertDTO wecomAlert = new AlertDTO();
+            wecomAlert.setType(type);
+            wecomAlert.setTitle(title);
+            wecomAlert.setContent(content);
+            wecomAlert.setRecipient(webhookSettings.getWeComWebhook()); // 企业微信不需要收件人，但保留字段用于日志
+            wecomAlert.setChannelType(NotificationChannelType.WECOM);
+            sendAlert(wecomAlert);
+        }
+
+        // 发送钉钉通知
+        if (Boolean.TRUE.equals(webhookSettings.getDingTalkEnabled()) && StrUtil.isNotBlank(webhookSettings.getDingTalkWebhook())) {
+            AlertDTO dingTalkAlert = new AlertDTO();
+            dingTalkAlert.setType(type);
+            dingTalkAlert.setTitle(title);
+            dingTalkAlert.setContent(content);
+            dingTalkAlert.setRecipient(webhookSettings.getDingTalkWebhook()); // 钉钉不需要收件人，但保留字段用于日志
+            dingTalkAlert.setChannelType(NotificationChannelType.DINGTALK);
+            sendAlert(dingTalkAlert);
+        }
+
+        // 发送自定义Webhook通知
+        if (Boolean.TRUE.equals(webhookSettings.getCustomWebhookEnabled()) && StrUtil.isNotBlank(webhookSettings.getCustomWebhookUrl())) {
+            AlertDTO webhookAlert = new AlertDTO();
+            webhookAlert.setType(type);
+            webhookAlert.setTitle(title);
+            webhookAlert.setContent(content);
+            webhookAlert.setRecipient(webhookSettings.getCustomWebhookUrl()); // Webhook使用recipient字段传递URL
+            webhookAlert.setChannelType(NotificationChannelType.WEBHOOK);
+            sendAlert(webhookAlert);
+        }
     }
 
 
@@ -128,14 +196,14 @@ public class AlertServiceImpl implements AlertService {
                     usagePercentage.multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP));
 
             String content = StrUtil.format(
-                    "预算告警通知\n\n" +
-                    "月份：{}\n" +
-                    "预算上限：{}\n" +
-                    "已使用金额：{}\n" +
-                    "使用百分比：{}%\n" +
-                    "告警阈值：{}%\n" +
-                    "剩余金额：{}\n\n" +
-                    "请及时关注成本使用情况。",
+                    "#### 📊 预算告警通知\n\n" +
+                    "**月份：** `{}`\n\n" +
+                    "**预算上限：** `¥{}`\n\n" +
+                    "**已使用金额：** `¥{}`\n\n" +
+                    "**使用百分比：** <font color=\"warning\">{}%</font>\n\n" +
+                    "**告警阈值：** {}%\n\n" +
+                    "**剩余金额：** `¥{}`\n\n" +
+                    "> 💡 请及时关注成本使用情况。",
                     currentBudget.getMonth(),
                     currentBudget.getLimitAmount(),
                     currentBudget.getUsedAmount(),
@@ -143,15 +211,8 @@ public class AlertServiceImpl implements AlertService {
                     alertSettings.getCostThreshold(),
                     currentBudget.getRemainingAmount());
 
-            // 发送告警
-            AlertDTO alert = new AlertDTO();
-            alert.setType(AlertType.COST);
-            alert.setTitle(title);
-            alert.setContent(content);
-            alert.setRecipient(recipient);
-            alert.setChannelType(NotificationChannelType.EMAIL);
-
-            sendAlert(alert);
+            // 发送告警到所有启用的通知渠道
+            sendAlertToAllChannels(AlertType.COST, title, content, recipient);
         }
 
         // 检查是否超预算
@@ -159,26 +220,19 @@ public class AlertServiceImpl implements AlertService {
             String title = StrUtil.format("【预算超支】{}月已超出预算！", currentBudget.getMonth());
 
             String content = StrUtil.format(
-                    "预算超支告警\n\n" +
-                    "月份：{}\n" +
-                    "预算上限：{}\n" +
-                    "已使用金额：{}\n" +
-                    "超支金额：{}\n\n" +
-                    "请立即采取措施控制成本！",
+                    "#### ⚠️ 预算超支告警\n\n" +
+                    "**月份：** `{}`\n\n" +
+                    "**预算上限：** `¥{}`\n\n" +
+                    "**已使用金额：** `¥{}`\n\n" +
+                    "**超支金额：** <font color=\"warning\">¥{}</font>\n\n" +
+                    "> ⚡ 请立即采取措施控制成本！",
                     currentBudget.getMonth(),
                     currentBudget.getLimitAmount(),
                     currentBudget.getUsedAmount(),
                     currentBudget.getUsedAmount().subtract(currentBudget.getLimitAmount()));
 
-            // 发送告警
-            AlertDTO alert = new AlertDTO();
-            alert.setType(AlertType.COST);
-            alert.setTitle(title);
-            alert.setContent(content);
-            alert.setRecipient(recipient);
-            alert.setChannelType(NotificationChannelType.EMAIL);
-
-            sendAlert(alert);
+            // 发送告警到所有启用的通知渠道
+            sendAlertToAllChannels(AlertType.COST, title, content, recipient);
         }
 
         log.debug("成本告警检查完成");
@@ -254,28 +308,21 @@ public class AlertServiceImpl implements AlertService {
                     String.format("%.2f", errorRate * 100));
 
             String content = StrUtil.format(
-                    "系统异常告警\n\n" +
-                    "时间窗口：最近{}分钟\n" +
-                    "总请求数：{}\n" +
-                    "失败请求数：{}\n" +
-                    "当前错误率：{}%\n" +
-                    "告警阈值：{}%\n\n" +
-                    "请及时排查系统异常！",
+                    "#### 🚨 系统异常告警\n\n" +
+                    "**时间窗口：** 最近 `{}` 分钟\n\n" +
+                    "**总请求数：** `{}`\n\n" +
+                    "**失败请求数：** `{}`\n\n" +
+                    "**当前错误率：** <font color=\"warning\">{}%</font>\n\n" +
+                    "**告警阈值：** {}%\n\n" +
+                    "> ⚡ 请及时排查系统异常！",
                     effectiveWindowMinutes,
                     totalRequests,
                     failedRequests,
                     String.format("%.2f", errorRate * 100),
                     String.format("%.0f", effectiveThreshold * 100));
 
-            // 发送告警
-            AlertDTO alert = new AlertDTO();
-            alert.setType(AlertType.ERROR_RATE);
-            alert.setTitle(title);
-            alert.setContent(content);
-            alert.setRecipient(recipient);
-            alert.setChannelType(NotificationChannelType.EMAIL);
-
-            sendAlert(alert);
+            // 发送告警到所有启用的通知渠道
+            sendAlertToAllChannels(AlertType.ERROR_RATE, title, content, recipient);
         }
 
         log.debug("错误率告警检查完成");
@@ -339,31 +386,30 @@ public class AlertServiceImpl implements AlertService {
             // 计算剩余时间
             long remainingMinutes = java.time.Duration.between(now, approval.getExpiresAt()).toMinutes();
 
+            // 获取Agent和Policy名称
+            String agentName = getAgentName(approval.getAgentId());
+            String policyName = getPolicyName(approval.getPolicyId());
+
             String content = StrUtil.format(
-                    "审批过期提醒\n\n" +
-                    "审批ID：{}\n" +
-                    "Agent ID：{}\n" +
-                    "策略ID：{}\n" +
-                    "创建时间：{}\n" +
-                    "过期时间：{}\n" +
-                    "剩余时间：{}分钟\n\n" +
-                    "请尽快处理该审批请求！",
+                    "#### ⏰ 审批过期提醒\n\n" +
+                    "**审批ID：** `{}`\n\n" +
+                    "**Agent：** `{}` (ID: `{}`)\n\n" +
+                    "**策略：** `{}` (ID: `{}`)\n\n" +
+                    "**创建时间：** `{}`\n\n" +
+                    "**过期时间：** `{}`\n\n" +
+                    "**剩余时间：** <font color=\"warning\">{} 分钟</font>\n\n" +
+                    "> ⚡ 请尽快处理该审批请求！",
                     approval.getId(),
+                    agentName,
                     approval.getAgentId(),
+                    policyName,
                     approval.getPolicyId(),
-                    approval.getCreatedAt(),
-                    approval.getExpiresAt(),
+                    formatDateTime(approval.getCreatedAt()),
+                    formatDateTime(approval.getExpiresAt()),
                     remainingMinutes);
 
-            // 发送告警
-            AlertDTO alert = new AlertDTO();
-            alert.setType(AlertType.APPROVAL);
-            alert.setTitle(title);
-            alert.setContent(content);
-            alert.setRecipient(recipient);
-            alert.setChannelType(NotificationChannelType.EMAIL);
-
-            sendAlert(alert);
+            // 发送告警到所有启用的通知渠道
+            sendAlertToAllChannels(AlertType.APPROVAL, title, content, recipient);
         }
 
         // 同时发送新的待审批请求提醒
@@ -396,30 +442,74 @@ public class AlertServiceImpl implements AlertService {
         for (ApprovalRequestDO approval : newApprovals) {
             String title = "【审批提醒】有新的审批请求待处理";
 
+            // 获取Agent和Policy名称
+            String agentName = getAgentName(approval.getAgentId());
+            String policyName = getPolicyName(approval.getPolicyId());
+
             String content = StrUtil.format(
-                    "新审批请求通知\n\n" +
-                    "审批ID：{}\n" +
-                    "Agent ID：{}\n" +
-                    "策略ID：{}\n" +
-                    "创建时间：{}\n" +
-                    "过期时间：{}\n\n" +
-                    "请及时处理该审批请求。",
+                    "#### 📋 新审批请求通知\n\n" +
+                    "**审批ID：** `{}`\n\n" +
+                    "**Agent：** `{}` (ID: `{}`)\n\n" +
+                    "**策略：** `{}` (ID: `{}`)\n\n" +
+                    "**创建时间：** `{}`\n\n" +
+                    "**过期时间：** `{}`\n\n" +
+                    "> 💡 请及时处理该审批请求。",
                     approval.getId(),
+                    agentName,
                     approval.getAgentId(),
+                    policyName,
                     approval.getPolicyId(),
-                    approval.getCreatedAt(),
-                    approval.getExpiresAt());
+                    formatDateTime(approval.getCreatedAt()),
+                    formatDateTime(approval.getExpiresAt()));
 
-            // 发送告警
-            AlertDTO alert = new AlertDTO();
-            alert.setType(AlertType.APPROVAL);
-            alert.setTitle(title);
-            alert.setContent(content);
-            alert.setRecipient(recipient);
-            alert.setChannelType(NotificationChannelType.EMAIL);
-
-            sendAlert(alert);
+            // 发送告警到所有启用的通知渠道
+            sendAlertToAllChannels(AlertType.APPROVAL, title, content, recipient);
         }
+    }
+
+    /**
+     * 格式化时间
+     *
+     * @param dateTime 时间对象
+     * @return 格式化后的时间字符串
+     */
+    private String formatDateTime(LocalDateTime dateTime) {
+        if (dateTime == null) {
+            return "未知";
+        }
+        return dateTime.format(DATE_TIME_FORMATTER);
+    }
+
+    /**
+     * 获取Agent名称
+     *
+     * @param agentId Agent ID
+     * @return Agent名称，如果未找到则返回ID
+     */
+    private String getAgentName(String agentId) {
+        if (StrUtil.isBlank(agentId)) {
+            return "未知";
+        }
+        AgentDO agent = agentMapper.selectById(agentId);
+        return agent != null && StrUtil.isNotBlank(agent.getName())
+            ? agent.getName()
+            : agentId;
+    }
+
+    /**
+     * 获取策略名称
+     *
+     * @param policyId 策略ID
+     * @return 策略名称，如果未找到则返回ID
+     */
+    private String getPolicyName(String policyId) {
+        if (StrUtil.isBlank(policyId)) {
+            return "未知";
+        }
+        PolicyDO policy = policyMapper.selectById(policyId);
+        return policy != null && StrUtil.isNotBlank(policy.getName())
+            ? policy.getName()
+            : policyId;
     }
 
     /**
