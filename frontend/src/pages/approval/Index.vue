@@ -264,7 +264,7 @@ onMounted(() => {
             {{ row.approvedAt || '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="100" fixed="right">
+        <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleViewDetail(row)">详情</el-button>
             <template v-if="canOperate(row)">

@@ -196,8 +196,16 @@ public class ApprovalServiceImpl implements ApprovalService {
             throw new BusinessException(ErrorCode.APPROVAL_NOT_FOUND);
         }
 
+        // 检查是否已过期，这里只做展示层转换，不修改数据库，数据库的更新由定时任务负责
+        ApprovalStatus displayStatus = approvalDO.getStatus();
+        if (approvalDO.getStatus() == ApprovalStatus.PENDING
+                && approvalDO.getExpiresAt() != null
+                && LocalDateTime.now().isAfter(approvalDO.getExpiresAt())) {
+            displayStatus = ApprovalStatus.EXPIRED;
+        }
+
         ApprovalStatusDTO statusDTO = ApprovalStatusDTO.builder()
-                .status(approvalDO.getStatus())
+                .status(displayStatus)
                 .build();
 
         // 如果审批通过且已执行成功，返回执行结果
@@ -289,6 +297,13 @@ public class ApprovalServiceImpl implements ApprovalService {
      */
     private ApprovalDTO toDTO(ApprovalRequestDO approvalDO) {
         ApprovalDTO dto = BeanUtil.copyProperties(approvalDO, ApprovalDTO.class);
+
+        // 检查是否已过期，这里只做展示层转换，不修改数据库，数据库的更新由定时任务负责
+        if (approvalDO.getStatus() == ApprovalStatus.PENDING
+                && approvalDO.getExpiresAt() != null
+                && LocalDateTime.now().isAfter(approvalDO.getExpiresAt())) {
+            dto.setStatus(ApprovalStatus.EXPIRED);
+        }
 
         // 获取策略名称
         if (StrUtil.isNotBlank(approvalDO.getPolicyId())) {
