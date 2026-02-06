@@ -46,13 +46,13 @@ public class WeComNotificationChannel extends AbstractNotificationChannel {
             return false;
         }
 
-        // 构建企业微信消息体（Markdown格式）
+        // 构建企业微信消息体（Markdown V2格式，支持表格等高级特性）
         JSONObject message = new JSONObject();
-        message.set("msgtype", "markdown");
+        message.set("msgtype", "markdown_v2");
 
-        JSONObject markdown = new JSONObject();
-        markdown.set("content", "### " + subject + "\n\n" + content);
-        message.set("markdown", markdown);
+        JSONObject markdownV2 = new JSONObject();
+        markdownV2.set("content", content);
+        message.set("markdown_v2", markdownV2);
 
         // 发送请求
         HttpResponse response = HttpRequest.post(webhook)

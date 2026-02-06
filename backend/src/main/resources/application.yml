@@ -90,6 +90,11 @@ agentguard:
     # 生产环境必须通过环境变量 ENCRYPTION_KEY 设置，密钥长度建议 32 字节
     key: ${ENCRYPTION_KEY:agentguard-encryption-key-32-bytes-long}
 
+# 应用配置
+app:
+  # 前端地址（用于告警通知中的跳转链接）
+  frontend-url: ${APP_FRONTEND_URL:http://localhost:3000}
+
 # Spring Boot Actuator 配置
 management:
   endpoints:

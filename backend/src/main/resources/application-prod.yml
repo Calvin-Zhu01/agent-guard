@@ -15,6 +15,11 @@ agentguard:
   encryption:
     key: ${ENCRYPTION_KEY}
 
+# 应用配置（必须通过环境变量设置）
+app:
+  # 前端地址（用于告警通知中的跳转链接）
+  frontend-url: ${APP_FRONTEND_URL}
+
 logging:
   level:
     com.agentguard: INFO

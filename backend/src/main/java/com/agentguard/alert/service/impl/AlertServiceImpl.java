@@ -59,6 +59,9 @@ public class AlertServiceImpl implements AlertService {
     @Value("${alert.default-recipient:admin@agentguard.com}")
     private String defaultRecipient;
 
+    @Value("${app.frontend-url:http://localhost:3000}")
+    private String frontendUrl;
+
     /** 时间格式化器 */
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -196,14 +199,14 @@ public class AlertServiceImpl implements AlertService {
                     usagePercentage.multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP));
 
             String content = StrUtil.format(
-                    "#### 📊 预算告警通知\n\n" +
-                    "**月份：** `{}`\n\n" +
-                    "**预算上限：** `¥{}`\n\n" +
-                    "**已使用金额：** `¥{}`\n\n" +
-                    "**使用百分比：** <font color=\"warning\">{}%</font>\n\n" +
+                    "#### 📊【AgentGuard】预算告警通知\n\n" +
+                    "**月份：** {}\n\n" +
+                    "**预算上限：** ¥{}\n\n" +
+                    "**已使用金额：** ¥{}\n\n" +
+                    "**使用百分比：** {}%\n\n" +
                     "**告警阈值：** {}%\n\n" +
-                    "**剩余金额：** `¥{}`\n\n" +
-                    "> 💡 请及时关注成本使用情况。",
+                    "**剩余金额：** ¥{}\n\n" +
+                    "请及时关注成本使用情况。",
                     currentBudget.getMonth(),
                     currentBudget.getLimitAmount(),
                     currentBudget.getUsedAmount(),
@@ -220,12 +223,12 @@ public class AlertServiceImpl implements AlertService {
             String title = StrUtil.format("【预算超支】{}月已超出预算！", currentBudget.getMonth());
 
             String content = StrUtil.format(
-                    "#### ⚠️ 预算超支告警\n\n" +
-                    "**月份：** `{}`\n\n" +
-                    "**预算上限：** `¥{}`\n\n" +
-                    "**已使用金额：** `¥{}`\n\n" +
-                    "**超支金额：** <font color=\"warning\">¥{}</font>\n\n" +
-                    "> ⚡ 请立即采取措施控制成本！",
+                    "#### ⚠️【AgentGuard】预算超支告警\n\n" +
+                    "**月份：** {}\n\n" +
+                    "**预算上限：** ¥{}\n\n" +
+                    "**已使用金额：** ¥{}\n\n" +
+                    "**超支金额：** ¥{}\n\n" +
+                    "请立即采取措施控制成本！",
                     currentBudget.getMonth(),
                     currentBudget.getLimitAmount(),
                     currentBudget.getUsedAmount(),
@@ -308,13 +311,13 @@ public class AlertServiceImpl implements AlertService {
                     String.format("%.2f", errorRate * 100));
 
             String content = StrUtil.format(
-                    "#### 🚨 系统异常告警\n\n" +
-                    "**时间窗口：** 最近 `{}` 分钟\n\n" +
-                    "**总请求数：** `{}`\n\n" +
-                    "**失败请求数：** `{}`\n\n" +
-                    "**当前错误率：** <font color=\"warning\">{}%</font>\n\n" +
+                    "#### 🚨【AgentGuard】系统异常告警\n\n" +
+                    "**时间窗口：** 最近 {} 分钟\n\n" +
+                    "**总请求数：** {}\n\n" +
+                    "**失败请求数：** {}\n\n" +
+                    "**当前错误率：** {}%\n\n" +
                     "**告警阈值：** {}%\n\n" +
-                    "> ⚡ 请及时排查系统异常！",
+                    "请及时排查系统异常！",
                     effectiveWindowMinutes,
                     totalRequests,
                     failedRequests,
@@ -371,7 +374,7 @@ public class AlertServiceImpl implements AlertService {
             return;
         }
 
-        log.info("发现{}个即将过期的审批请求", pendingApprovals.size());
+        log.info("发现{}个即将过期的审批请求，将发送汇总通知", pendingApprovals.size());
 
         // 获取邮件配置中的默认收件人
         var emailSettings = systemSettingsService.getEmailSettings();
@@ -380,40 +383,44 @@ public class AlertServiceImpl implements AlertService {
             recipient = defaultRecipient;
         }
 
-        for (ApprovalRequestDO approval : pendingApprovals) {
-            String title = "【审批提醒】审批请求即将过期";
+        // 按过期时间排序，取前3条
+        List<ApprovalRequestDO> top3Approvals = pendingApprovals.stream()
+                .sorted((a1, a2) -> a1.getExpiresAt().compareTo(a2.getExpiresAt()))
+                .limit(3)
+                .toList();
 
-            // 计算剩余时间
+        String title = StrUtil.format("【审批提醒】有{}个审批请求即将过期", pendingApprovals.size());
+
+        // 构建表格内容
+        StringBuilder tableBuilder = new StringBuilder();
+        tableBuilder.append("| 审批ID | 过期时间 | 剩余时间 |\n");
+        tableBuilder.append("| :----- | :----: | -------: |\n");
+
+        for (ApprovalRequestDO approval : top3Approvals) {
             long remainingMinutes = java.time.Duration.between(now, approval.getExpiresAt()).toMinutes();
-
-            // 获取Agent和Policy名称
-            String agentName = getAgentName(approval.getAgentId());
-            String policyName = getPolicyName(approval.getPolicyId());
-
-            String content = StrUtil.format(
-                    "#### ⏰ 审批过期提醒\n\n" +
-                    "**审批ID：** `{}`\n\n" +
-                    "**Agent：** `{}` (ID: `{}`)\n\n" +
-                    "**策略：** `{}` (ID: `{}`)\n\n" +
-                    "**创建时间：** `{}`\n\n" +
-                    "**过期时间：** `{}`\n\n" +
-                    "**剩余时间：** <font color=\"warning\">{} 分钟</font>\n\n" +
-                    "> ⚡ 请尽快处理该审批请求！",
+            tableBuilder.append(StrUtil.format("| {} | {} | {} 分钟 |\n",
                     approval.getId(),
-                    agentName,
-                    approval.getAgentId(),
-                    policyName,
-                    approval.getPolicyId(),
-                    formatDateTime(approval.getCreatedAt()),
                     formatDateTime(approval.getExpiresAt()),
-                    remainingMinutes);
-
-            // 发送告警到所有启用的通知渠道
-            sendAlertToAllChannels(AlertType.APPROVAL, title, content, recipient);
+                    remainingMinutes));
         }
 
+        String content = StrUtil.format(
+                "#### ⏰【AgentGuard】审批过期提醒\n\n" +
+                "**待审批总数：** {}\n\n" +
+                "**即将过期的前3条审批请求：**\n\n" +
+                "{}\n" +
+                "请尽快处理这些审批请求！\n\n" +
+                "👉 [前往审批中心处理]({})",
+                pendingApprovals.size(),
+                tableBuilder.toString(),
+                frontendUrl + "/approvals");
+
+        // 发送告警到所有启用的通知渠道
+        sendAlertToAllChannels(AlertType.APPROVAL, title, content, recipient);
+
+
         // 同时发送新的待审批请求提醒
-        sendNewApprovalReminders(recipient);
+        // sendNewApprovalReminders(recipient);
 
         log.debug("审批提醒发送完成");
     }
