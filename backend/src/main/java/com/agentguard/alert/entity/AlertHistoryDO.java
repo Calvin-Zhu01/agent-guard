@@ -2,7 +2,6 @@ package com.agentguard.alert.entity;
 
 import com.agentguard.alert.enums.AlertStatus;
 import com.agentguard.alert.enums.AlertType;
-import com.agentguard.alert.enums.NotificationChannelType;
 import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
 
@@ -36,14 +35,17 @@ public class AlertHistoryDO {
     /** 接收人 */
     private String recipient;
 
-    /** 通知渠道：EMAIL/WEBHOOK */
-    private NotificationChannelType channelType;
+    /** 通知渠道：EMAIL/WEBHOOK/DINGTALK/WECOM，多个渠道用逗号分隔 */
+    private String channelType;
 
     /** 发送状态：SUCCESS/FAILED */
     private AlertStatus status;
 
     /** 错误信息 */
     private String errorMessage;
+
+    /** 发送时间 */
+    private LocalDateTime sentAt;
 
     /** 创建时间 */
     private LocalDateTime createdAt;

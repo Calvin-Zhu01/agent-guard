@@ -132,6 +132,7 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
         dto.setApprovalReminderEnabled(Boolean.parseBoolean(settings.getOrDefault("approval_reminder_enabled", "true")));
         dto.setApprovalReminderMinutes(parseInteger(settings.get("approval_reminder_minutes"), 30));
         dto.setApprovalReminderCooldownMinutes(parseInteger(settings.get("approval_reminder_cooldown_minutes"), 10));
+        dto.setApprovalExpirationMinutes(parseInteger(settings.get("approval_expiration_minutes"), 60));
         return dto;
     }
 
@@ -149,6 +150,7 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
         settings.put("approval_reminder_enabled", dto.getApprovalReminderEnabled());
         settings.put("approval_reminder_minutes", dto.getApprovalReminderMinutes());
         settings.put("approval_reminder_cooldown_minutes", dto.getApprovalReminderCooldownMinutes());
+        settings.put("approval_expiration_minutes", dto.getApprovalExpirationMinutes());
 
         saveSettings(CATEGORY_ALERT, settings);
     }

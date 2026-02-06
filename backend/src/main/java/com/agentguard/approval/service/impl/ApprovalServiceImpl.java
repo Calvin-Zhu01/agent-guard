@@ -24,6 +24,7 @@ import com.agentguard.log.enums.ResponseStatus;
 import com.agentguard.log.service.AgentLogService;
 import com.agentguard.policy.entity.PolicyDO;
 import com.agentguard.policy.mapper.PolicyMapper;
+import com.agentguard.settings.service.SystemSettingsService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -53,6 +54,7 @@ public class ApprovalServiceImpl implements ApprovalService {
     private final ApplicationEventPublisher eventPublisher;
     private final AgentLogService agentLogService;
     private final ApprovalIdGenerator approvalIdGenerator;
+    private final SystemSettingsService systemSettingsService;
 
     @Override
     @Transactional
@@ -65,7 +67,14 @@ public class ApprovalServiceImpl implements ApprovalService {
         approvalDO.setRequestData(dto.getRequestData());
         approvalDO.setStatus(ApprovalStatus.PENDING);
         approvalDO.setExecutionStatus(ExecutionStatus.NOT_EXECUTED);
-        approvalDO.setExpiresAt(LocalDateTime.now().plusMinutes(dto.getExpireMinutes()));
+
+        // 获取过期时间
+        int expireMinutes = dto.getExpireMinutes();
+        if (expireMinutes <= 0) {
+            var alertSettings = systemSettingsService.getAlertSettings();
+            expireMinutes = alertSettings.getApprovalExpirationMinutes();
+        }
+        approvalDO.setExpiresAt(LocalDateTime.now().plusMinutes(expireMinutes));
 
         approvalMapper.insert(approvalDO);
         return toDTO(approvalDO);

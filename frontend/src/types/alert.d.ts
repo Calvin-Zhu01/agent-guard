@@ -22,6 +22,8 @@ export interface AlertHistory {
   type: AlertType
   title: string
   content: string
+  recipient?: string
+  channelType: string
   status: AlertStatus
   errorMessage?: string
   sentAt: string

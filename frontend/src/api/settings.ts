@@ -63,6 +63,7 @@ export interface AlertSettings {
   errorRateAlertCooldownMinutes: number
   approvalReminderEnabled: boolean
   approvalReminderMinutes: number
+  approvalExpirationMinutes: number
   approvalReminderCooldownMinutes: number
 }
 

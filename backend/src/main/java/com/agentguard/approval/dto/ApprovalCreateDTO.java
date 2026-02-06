@@ -25,6 +25,6 @@ public class ApprovalCreateDTO {
     @NotBlank(message = "请求数据不能为空")
     private String requestData;
 
-    @Schema(description = "过期时间（分钟），默认60分钟", example = "60")
-    private Integer expireMinutes = 60;
+    @Schema(description = "过期时间（分钟）")
+    private Integer expireMinutes;
 }

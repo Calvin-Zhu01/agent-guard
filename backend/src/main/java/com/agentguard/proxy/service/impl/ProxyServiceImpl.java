@@ -842,7 +842,6 @@ public class ProxyServiceImpl implements ProxyService {
         createDTO.setPolicyId(policyResult.getPolicyId());
         createDTO.setAgentId(agentId);
         createDTO.setRequestData(JSONUtil.toJsonStr(requestData));
-        createDTO.setExpireMinutes(60);
 
         ApprovalDTO approval = approvalService.create(createDTO);
         log.info("审批请求创建成功，ID: {}", approval.getId());
@@ -1166,7 +1165,6 @@ public class ProxyServiceImpl implements ProxyService {
         createDTO.setPolicyId(policyResult.getPolicyId());
         createDTO.setAgentId(agentId);
         createDTO.setRequestData(JSONUtil.toJsonStr(requestData));
-        createDTO.setExpireMinutes(60);
 
         ApprovalDTO approval = approvalService.create(createDTO);
         log.info("审批请求创建成功，ID: {}", approval.getId());

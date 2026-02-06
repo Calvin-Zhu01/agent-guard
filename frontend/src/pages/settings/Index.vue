@@ -4,7 +4,7 @@
  *
  * @author zhuhx
  */
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Bell, Message } from '@element-plus/icons-vue'
 import CodeBlock from '@/components/CodeBlock.vue'
@@ -57,6 +57,7 @@ const alertForm = ref<AlertSettings>({
   errorRateAlertCooldownMinutes: 30,
   approvalReminderEnabled: true,
   approvalReminderMinutes: 30,
+  approvalExpirationMinutes: 60,
   approvalReminderCooldownMinutes: 10
 })
 
@@ -162,10 +163,26 @@ const saveAlertSettings = async () => {
   }
 }
 
-onMounted(() => {
-  loadEmailSettings()
-  loadWebhookSettings()
+// 监听告警配置标签切换
+watch(alertActiveTab, () => {
   loadAlertSettings()
+})
+
+// 监听通知配置标签切换
+watch(notifyActiveTab, (newTab) => {
+  if (newTab === 'email') {
+    loadEmailSettings()
+  } else if (newTab === 'webhook') {
+    loadWebhookSettings()
+  }
+})
+
+// 页面加载时，只加载当前激活标签的数据
+onMounted(() => {
+  // 加载告警配置（默认显示成本告警标签）
+  loadAlertSettings()
+  // 加载邮件配置（默认显示邮件通知标签）
+  loadEmailSettings()
 })
 </script>
 
@@ -269,6 +286,18 @@ onMounted(() => {
               <el-form :model="alertForm" label-width="140px">
                 <el-form-item label="启用审批提醒">
                   <el-switch v-model="alertForm.approvalReminderEnabled" />
+                </el-form-item>
+
+                <el-form-item label="审批记录过期时间">
+                  <el-input-number
+                    v-model="alertForm.approvalExpirationMinutes"
+                    :min="5"
+                    :max="1440"
+                    :step="5"
+                    :disabled="!alertForm.approvalReminderEnabled"
+                  />
+                  <span class="unit-text">分钟</span>
+                  <div class="form-tip">新建审批记录的默认过期时间</div>
                 </el-form-item>
 
                 <el-form-item label="提醒提前时间">

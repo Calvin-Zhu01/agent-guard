@@ -82,8 +82,9 @@ public class AlertServiceImpl implements AlertService {
         history.setTitle(alert.getTitle());
         history.setContent(alert.getContent());
         history.setRecipient(alert.getRecipient());
-        history.setChannelType(alert.getChannelType());
+        history.setChannelType(alert.getChannelType().getCode());
         history.setStatus(success ? AlertStatus.SUCCESS : AlertStatus.FAILED);
+        history.setSentAt(LocalDateTime.now());
         if (!success) {
             history.setErrorMessage("通知发送失败");
         }
@@ -107,48 +108,106 @@ public class AlertServiceImpl implements AlertService {
         var webhookSettings = systemSettingsService.getWebhookSettings();
         var emailSettings = systemSettingsService.getEmailSettings();
 
+        // 收集所有启用的渠道和发送结果
+        List<String> enabledChannels = new java.util.ArrayList<>();
+        List<String> successChannels = new java.util.ArrayList<>();
+        List<String> failedChannels = new java.util.ArrayList<>();
+        StringBuilder errorMessages = new StringBuilder();
+
         // 发送邮件通知
         if (Boolean.TRUE.equals(emailSettings.getEnabled()) && StrUtil.isNotBlank(recipient)) {
-            AlertDTO emailAlert = new AlertDTO();
-            emailAlert.setType(type);
-            emailAlert.setTitle(title);
-            emailAlert.setContent(content);
-            emailAlert.setRecipient(recipient);
-            emailAlert.setChannelType(NotificationChannelType.EMAIL);
-            sendAlert(emailAlert);
+            enabledChannels.add(NotificationChannelType.EMAIL.getCode());
+            try {
+                NotificationChannel channel = channelFactory.getChannel(NotificationChannelType.EMAIL);
+                boolean success = channel.send(recipient, title, content);
+                if (success) {
+                    successChannels.add(NotificationChannelType.EMAIL.getCode());
+                } else {
+                    failedChannels.add(NotificationChannelType.EMAIL.getCode());
+                    errorMessages.append("EMAIL发送失败; ");
+                }
+            } catch (Exception e) {
+                failedChannels.add(NotificationChannelType.EMAIL.getCode());
+                errorMessages.append("EMAIL发送异常: ").append(e.getMessage()).append("; ");
+                log.error("发送邮件通知失败", e);
+            }
         }
 
         // 发送企业微信通知
         if (Boolean.TRUE.equals(webhookSettings.getWeComEnabled()) && StrUtil.isNotBlank(webhookSettings.getWeComWebhook())) {
-            AlertDTO wecomAlert = new AlertDTO();
-            wecomAlert.setType(type);
-            wecomAlert.setTitle(title);
-            wecomAlert.setContent(content);
-            wecomAlert.setRecipient(webhookSettings.getWeComWebhook()); // 企业微信不需要收件人，但保留字段用于日志
-            wecomAlert.setChannelType(NotificationChannelType.WECOM);
-            sendAlert(wecomAlert);
+            enabledChannels.add(NotificationChannelType.WECOM.getCode());
+            try {
+                NotificationChannel channel = channelFactory.getChannel(NotificationChannelType.WECOM);
+                boolean success = channel.send(webhookSettings.getWeComWebhook(), title, content);
+                if (success) {
+                    successChannels.add(NotificationChannelType.WECOM.getCode());
+                } else {
+                    failedChannels.add(NotificationChannelType.WECOM.getCode());
+                    errorMessages.append("WECOM发送失败; ");
+                }
+            } catch (Exception e) {
+                failedChannels.add(NotificationChannelType.WECOM.getCode());
+                errorMessages.append("WECOM发送异常: ").append(e.getMessage()).append("; ");
+                log.error("发送企业微信通知失败", e);
+            }
         }
 
         // 发送钉钉通知
         if (Boolean.TRUE.equals(webhookSettings.getDingTalkEnabled()) && StrUtil.isNotBlank(webhookSettings.getDingTalkWebhook())) {
-            AlertDTO dingTalkAlert = new AlertDTO();
-            dingTalkAlert.setType(type);
-            dingTalkAlert.setTitle(title);
-            dingTalkAlert.setContent(content);
-            dingTalkAlert.setRecipient(webhookSettings.getDingTalkWebhook()); // 钉钉不需要收件人，但保留字段用于日志
-            dingTalkAlert.setChannelType(NotificationChannelType.DINGTALK);
-            sendAlert(dingTalkAlert);
+            enabledChannels.add(NotificationChannelType.DINGTALK.getCode());
+            try {
+                NotificationChannel channel = channelFactory.getChannel(NotificationChannelType.DINGTALK);
+                boolean success = channel.send(webhookSettings.getDingTalkWebhook(), title, content);
+                if (success) {
+                    successChannels.add(NotificationChannelType.DINGTALK.getCode());
+                } else {
+                    failedChannels.add(NotificationChannelType.DINGTALK.getCode());
+                    errorMessages.append("DINGTALK发送失败; ");
+                }
+            } catch (Exception e) {
+                failedChannels.add(NotificationChannelType.DINGTALK.getCode());
+                errorMessages.append("DINGTALK发送异常: ").append(e.getMessage()).append("; ");
+                log.error("发送钉钉通知失败", e);
+            }
         }
 
         // 发送自定义Webhook通知
         if (Boolean.TRUE.equals(webhookSettings.getCustomWebhookEnabled()) && StrUtil.isNotBlank(webhookSettings.getCustomWebhookUrl())) {
-            AlertDTO webhookAlert = new AlertDTO();
-            webhookAlert.setType(type);
-            webhookAlert.setTitle(title);
-            webhookAlert.setContent(content);
-            webhookAlert.setRecipient(webhookSettings.getCustomWebhookUrl()); // Webhook使用recipient字段传递URL
-            webhookAlert.setChannelType(NotificationChannelType.WEBHOOK);
-            sendAlert(webhookAlert);
+            enabledChannels.add(NotificationChannelType.WEBHOOK.getCode());
+            try {
+                NotificationChannel channel = channelFactory.getChannel(NotificationChannelType.WEBHOOK);
+                boolean success = channel.send(webhookSettings.getCustomWebhookUrl(), title, content);
+                if (success) {
+                    successChannels.add(NotificationChannelType.WEBHOOK.getCode());
+                } else {
+                    failedChannels.add(NotificationChannelType.WEBHOOK.getCode());
+                    errorMessages.append("WEBHOOK发送失败; ");
+                }
+            } catch (Exception e) {
+                failedChannels.add(NotificationChannelType.WEBHOOK.getCode());
+                errorMessages.append("WEBHOOK发送异常: ").append(e.getMessage()).append("; ");
+                log.error("发送Webhook通知失败", e);
+            }
+        }
+
+        // 如果有启用的渠道，创建一条告警历史记录
+        if (!enabledChannels.isEmpty()) {
+            AlertHistoryDO history = new AlertHistoryDO();
+            history.setType(type);
+            history.setTitle(title);
+            history.setContent(content);
+            history.setRecipient(recipient);
+            history.setChannelType(String.join(",", enabledChannels));
+            history.setStatus(failedChannels.isEmpty() ? AlertStatus.SUCCESS : AlertStatus.FAILED);
+            history.setSentAt(LocalDateTime.now());
+
+            if (!failedChannels.isEmpty()) {
+                history.setErrorMessage(errorMessages.toString());
+            }
+
+            alertHistoryMapper.insert(history);
+            log.info("告警记录已保存: id={}, channels={}, status={}",
+                    history.getId(), history.getChannelType(), history.getStatus());
         }
     }
 

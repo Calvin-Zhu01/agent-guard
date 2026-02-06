@@ -35,6 +35,9 @@ public class AlertSettingsDTO {
     @Schema(description = "审批提醒提前时间（分钟）")
     private Integer approvalReminderMinutes;
 
+    @Schema(description = "审批记录过期时间（分钟）")
+    private Integer approvalExpirationMinutes;
+
     @Schema(description = "成本告警通知冷却时间（分钟）")
     private Integer costAlertCooldownMinutes;
 
