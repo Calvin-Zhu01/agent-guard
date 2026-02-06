@@ -167,9 +167,25 @@ public class SystemSettingsServiceImpl implements SystemSettingsService {
             Properties props = mailSender.getJavaMailProperties();
             props.put("mail.transport.protocol", "smtp");
             props.put("mail.smtp.auth", "true");
-            props.put("mail.smtp.starttls.enable", dto.getSslEnabled());
-            props.put("mail.smtp.timeout", "5000");
-            props.put("mail.smtp.connectiontimeout", "5000");
+            props.put("mail.smtp.timeout", "10000");
+            props.put("mail.smtp.connectiontimeout", "10000");
+
+            // 根据端口号选择不同的SSL/TLS配置方式
+            if (dto.getSslEnabled()) {
+                if (dto.getSmtpPort() == 465) {
+                    // 465端口使用隐式SSL（SMTPS）
+                    props.put("mail.smtp.ssl.enable", "true");
+                    props.put("mail.smtp.socketFactory.port", String.valueOf(dto.getSmtpPort()));
+                    props.put("mail.smtp.socketFactory.class", "javax.net.ssl.SSLSocketFactory");
+                    props.put("mail.smtp.socketFactory.fallback", "false");
+                    log.debug("使用465端口隐式SSL配置");
+                } else {
+                    // 587端口或其他端口使用STARTTLS（显式TLS）
+                    props.put("mail.smtp.starttls.enable", "true");
+                    props.put("mail.smtp.starttls.required", "true");
+                    log.debug("使用STARTTLS配置");
+                }
+            }
 
             // 测试连接
             mailSender.testConnection();
