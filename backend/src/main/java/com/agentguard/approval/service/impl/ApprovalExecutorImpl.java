@@ -103,7 +103,15 @@ public class ApprovalExecutorImpl implements ApprovalExecutor {
             approval.setExecutedAt(LocalDateTime.now());
             approvalMapper.updateById(approval);
 
-            // 8. 更新关联的日志响应体（只保存 body 部分）
+            // 8. 更新关联的日志状态为 SUCCESS
+            try {
+                agentLogService.updateStatusByApprovalRequestId(approvalId, com.agentguard.log.enums.ResponseStatus.SUCCESS);
+                log.info("已更新审批请求 {} 关联的日志状态为 SUCCESS", approvalId);
+            } catch (Exception e) {
+                log.error("更新日志状态失败: approvalId={}, error={}", approvalId, e.getMessage(), e);
+            }
+
+            // 9. 更新关联的日志响应体（只保存 body 部分）
             try {
                 Object bodyContent = result.get("body");
                 String responseBodyJson = bodyContent != null ? JSONUtil.toJsonStr(bodyContent) : null;
@@ -130,6 +138,14 @@ public class ApprovalExecutorImpl implements ApprovalExecutor {
             approval.setExecutionResult(JSONUtil.toJsonStr(errorResult));
             approval.setExecutedAt(LocalDateTime.now());
             approvalMapper.updateById(approval);
+
+            // 更新关联的日志状态为 FAILED
+            try {
+                agentLogService.updateStatusByApprovalRequestId(approvalId, com.agentguard.log.enums.ResponseStatus.FAILED);
+                log.info("已更新审批请求 {} 关联的日志状态为 FAILED", approvalId);
+            } catch (Exception ee) {
+                log.error("更新日志状态失败: approvalId={}, error={}", approvalId, e.getMessage(), ee);
+            }
 
             // 更新关联的日志响应体，保存错误信息
             try {

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentguard.approval.mapper.ApprovalMapper">
+
+    <!-- 分页查询审批请求 -->
+    <select id="selectPageWithNames" resultType="com.agentguard.approval.dto.ApprovalDTO">
+        SELECT
+            a.*,
+            p.name AS policy_name,
+            ag.name AS agent_name
+        FROM approval_request a
+        LEFT JOIN policy p ON a.policy_id = p.id
+        LEFT JOIN agent ag ON a.agent_id = ag.id
+        WHERE 1=1
+        <if test="status != null">
+            AND a.status = #{status}
+        </if>
+        <if test="agentId != null and agentId != ''">
+            AND a.agent_id = #{agentId}
+        </if>
+        <if test="approvalId != null and approvalId != ''">
+            AND a.id LIKE CONCAT('%', #{approvalId}, '%')
+        </if>
+        ORDER BY a.created_at DESC
+    </select>
+
+    <!-- 根据ID查询审批请求-->
+    <select id="selectByIdWithNames" resultType="com.agentguard.approval.dto.ApprovalDTO">
+        SELECT
+            a.*,
+            p.name AS policy_name,
+            ag.name AS agent_name
+        FROM approval_request a
+        LEFT JOIN policy p ON a.policy_id = p.id
+        LEFT JOIN agent ag ON a.agent_id = ag.id
+        WHERE a.id = #{id}
+    </select>
+
+</mapper>

@@ -5,6 +5,7 @@ import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.json.JSONUtil;
 import com.agentguard.alert.enums.NotificationChannelType;
+import com.agentguard.settings.dto.WebhookSettingsDTO;
 import com.agentguard.settings.service.SystemSettingsService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -43,7 +44,7 @@ public class WebhookNotificationChannel extends AbstractNotificationChannel {
         }
 
         // 从系统设置中获取自定义Webhook配置
-        var webhookSettings = systemSettingsService.getWebhookSettings();
+        WebhookSettingsDTO webhookSettings = systemSettingsService.getWebhookSettings();
         String secret = webhookSettings.getCustomWebhookSecret();
 
         // 构建 Webhook 请求体

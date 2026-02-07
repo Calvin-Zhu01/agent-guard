@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentguard.agent.mapper.AgentPolicyBindingMapper">
+
+    <!-- 批量查询Agent的策略绑定关系 -->
+    <select id="selectByAgentIds" resultType="com.agentguard.agent.entity.AgentPolicyBindingDO">
+        SELECT * FROM agent_policy_binding
+        WHERE agent_id IN
+        <foreach collection="agentIds" item="agentId" open="(" separator="," close=")">
+            #{agentId}
+        </foreach>
+    </select>
+
+</mapper>

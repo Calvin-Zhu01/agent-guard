@@ -20,17 +20,14 @@ public enum ResponseStatus {
     /** 失败 */
     FAILED("FAILED", "失败"),
 
-    /** 被拦截 */
-    BLOCKED("BLOCKED", "被拦截"),
+    /** 已拦截 */
+    BLOCKED("BLOCKED", "已拦截"),
 
     /** 待审批 */
     PENDING_APPROVAL("PENDING_APPROVAL", "待审批"),
 
-    /** 审批通过 */
-    APPROVED("APPROVED", "审批通过"),
-
-    /** 审批拒绝 */
-    REJECTED("REJECTED", "审批拒绝"),
+    /** 已拒绝 */
+    REJECTED("REJECTED", "已拒绝"),
 
     /** 已过期 */
     EXPIRED("EXPIRED", "已过期");

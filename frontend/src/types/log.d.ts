@@ -8,7 +8,7 @@
 export type RequestType = 'API_CALL' | 'LLM_CALL'
 
 /** 响应状态 */
-export type ResponseStatus = 'SUCCESS' | 'FAILED' | 'BLOCKED' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED'
+export type ResponseStatus = 'SUCCESS' | 'FAILED' | 'BLOCKED' | 'PENDING_APPROVAL' | 'REJECTED' | 'EXPIRED'
 
 /** 策略类型 */
 export type PolicyType = 'ACCESS_CONTROL' | 'RATE_LIMIT' | 'APPROVAL'

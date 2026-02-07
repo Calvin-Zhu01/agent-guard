@@ -12,6 +12,7 @@ import com.agentguard.agent.dto.AgentDTO;
 import com.agentguard.agent.dto.AgentUpdateDTO;
 import com.agentguard.agent.dto.LlmTestConnectionDTO;
 import com.agentguard.agent.entity.AgentDO;
+import com.agentguard.agent.entity.AgentPolicyBindingDO;
 import com.agentguard.agent.mapper.AgentMapper;
 import com.agentguard.agent.mapper.AgentPolicyBindingMapper;
 import com.agentguard.agent.service.AgentService;
@@ -35,6 +36,8 @@ import org.springframework.web.client.RestTemplate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -80,6 +83,7 @@ public class AgentServiceImpl implements AgentService {
 
     @Override
     public IPage<AgentDTO> page(Page<AgentDTO> page, String keyword) {
+        // 1. 查询Agent分页数据
         LambdaQueryWrapper<AgentDO> wrapper = new LambdaQueryWrapper<>();
         if (StrUtil.isNotBlank(keyword)) {
             wrapper.and(w -> w.like(AgentDO::getName, keyword)
@@ -90,7 +94,37 @@ public class AgentServiceImpl implements AgentService {
         Page<AgentDO> entityPage = new Page<>(page.getCurrent(), page.getSize());
         Page<AgentDO> result = agentMapper.selectPage(entityPage, wrapper);
 
-        return result.convert(this::toDTO);
+        List<AgentDO> records = result.getRecords();
+        if (records.isEmpty()) {
+            return result.convert(this::toDTO);
+        }
+
+        // 2. 批量查询绑定关系
+        Set<String> agentIds = records.stream()
+                .map(AgentDO::getId)
+                .collect(Collectors.toSet());
+        List<AgentPolicyBindingDO> bindings = bindingMapper.selectByAgentIds(agentIds);
+
+        // 3. 批量查询策略信息
+        Set<String> policyIds = bindings.stream()
+                .map(AgentPolicyBindingDO::getPolicyId)
+                .collect(Collectors.toSet());
+        Map<String, PolicyDO> policyMap = policyIds.isEmpty() ? Map.of() :
+                policyMapper.selectBatchIds(policyIds).stream()
+                        .collect(Collectors.toMap(PolicyDO::getId, p -> p));
+
+        // 4. 构建Agent -> Policies映射
+        Map<String, List<PolicyDO>> agentPoliciesMap = bindings.stream()
+                .collect(Collectors.groupingBy(
+                        AgentPolicyBindingDO::getAgentId,
+                        Collectors.mapping(
+                                b -> policyMap.get(b.getPolicyId()),
+                                Collectors.toList()
+                        )
+                ));
+
+        // 5. 转换为DTO
+        return result.convert(agent -> toDTO(agent, agentPoliciesMap.getOrDefault(agent.getId(), List.of())));
     }
 
     @Override
@@ -171,6 +205,40 @@ public class AgentServiceImpl implements AgentService {
         if (!policyIds.isEmpty()) {
             List<PolicyDO> policies = policyMapper.selectBatchIds(policyIds);
             List<AgentDTO.PolicySummaryDTO> policySummaries = policies.stream()
+                    .map(policy -> {
+                        AgentDTO.PolicySummaryDTO summary = new AgentDTO.PolicySummaryDTO();
+                        summary.setId(policy.getId());
+                        summary.setName(policy.getName());
+                        summary.setEnabled(policy.getEnabled());
+                        return summary;
+                    })
+                    .collect(Collectors.toList());
+            dto.setPolicies(policySummaries);
+        }
+
+        return dto;
+    }
+
+    /**
+     * 转换为 DTO
+     *
+     * @param agentDO Agent实体对象
+     * @param policies 预加载的策略列表
+     * @return DTO对象
+     */
+    private AgentDTO toDTO(AgentDO agentDO, List<PolicyDO> policies) {
+        AgentDTO dto = BeanUtil.copyProperties(agentDO, AgentDTO.class);
+
+        // 解密并脱敏 LLM API Key
+        if (StrUtil.isNotBlank(agentDO.getLlmApiKey())) {
+            String decrypted = encryptionUtil.decrypt(agentDO.getLlmApiKey());
+            dto.setLlmApiKey(maskApiKey(decrypted));
+        }
+
+        // 使用预加载的策略数据
+        if (!policies.isEmpty()) {
+            List<AgentDTO.PolicySummaryDTO> policySummaries = policies.stream()
+                    .filter(Objects::nonNull)
                     .map(policy -> {
                         AgentDTO.PolicySummaryDTO summary = new AgentDTO.PolicySummaryDTO();
                         summary.setId(policy.getId());

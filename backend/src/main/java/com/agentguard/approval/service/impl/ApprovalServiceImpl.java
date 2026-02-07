@@ -24,6 +24,7 @@ import com.agentguard.log.enums.ResponseStatus;
 import com.agentguard.log.service.AgentLogService;
 import com.agentguard.policy.entity.PolicyDO;
 import com.agentguard.policy.mapper.PolicyMapper;
+import com.agentguard.settings.dto.AlertSettingsDTO;
 import com.agentguard.settings.service.SystemSettingsService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -67,51 +68,56 @@ public class ApprovalServiceImpl implements ApprovalService {
         approvalDO.setRequestData(dto.getRequestData());
         approvalDO.setStatus(ApprovalStatus.PENDING);
         approvalDO.setExecutionStatus(ExecutionStatus.NOT_EXECUTED);
-
-        // 获取过期时间
-        int expireMinutes = dto.getExpireMinutes();
-        if (expireMinutes <= 0) {
-            var alertSettings = systemSettingsService.getAlertSettings();
-            expireMinutes = alertSettings.getApprovalExpirationMinutes();
-        }
+        // 从系统设置中获取过期时间
+        AlertSettingsDTO alertSettings = systemSettingsService.getAlertSettings();
+        int expireMinutes = alertSettings.getApprovalExpirationMinutes();
         approvalDO.setExpiresAt(LocalDateTime.now().plusMinutes(expireMinutes));
 
         approvalMapper.insert(approvalDO);
-        return toDTO(approvalDO);
+
+        ApprovalDTO result = approvalMapper.selectByIdWithNames(approvalDO.getId());
+        if (result != null) {
+            // 检查是否已过期
+            if (result.getStatus() == ApprovalStatus.PENDING
+                    && result.getExpiresAt() != null
+                    && LocalDateTime.now().isAfter(result.getExpiresAt())) {
+                result.setStatus(ApprovalStatus.EXPIRED);
+            }
+        }
+        return result;
     }
 
     @Override
     public ApprovalDTO getById(String id) {
-        ApprovalRequestDO approvalDO = approvalMapper.selectById(id);
-        if (ObjectUtil.isNull(approvalDO)) {
+        ApprovalDTO dto = approvalMapper.selectByIdWithNames(id);
+        if (ObjectUtil.isNull(dto)) {
             throw new BusinessException(ErrorCode.APPROVAL_NOT_FOUND);
         }
-        return toDTO(approvalDO);
+
+        // 检查是否已过期
+        if (dto.getStatus() == ApprovalStatus.PENDING
+                && dto.getExpiresAt() != null
+                && LocalDateTime.now().isAfter(dto.getExpiresAt())) {
+            dto.setStatus(ApprovalStatus.EXPIRED);
+        }
+
+        return dto;
     }
 
     @Override
     public IPage<ApprovalDTO> page(Page<ApprovalDTO> page, ApprovalStatus status, String agentId, String approvalId) {
-        LambdaQueryWrapper<ApprovalRequestDO> wrapper = new LambdaQueryWrapper<>();
+        IPage<ApprovalDTO> result = approvalMapper.selectPageWithNames(page, status, agentId, approvalId);
 
-        if (ObjectUtil.isNotNull(status)) {
-            wrapper.eq(ApprovalRequestDO::getStatus, status);
-        }
+        // 检查并更新过期状态，真正更新数据库的逻辑由定时任务负责
+        result.getRecords().forEach(dto -> {
+            if (dto.getStatus() == ApprovalStatus.PENDING
+                    && dto.getExpiresAt() != null
+                    && LocalDateTime.now().isAfter(dto.getExpiresAt())) {
+                dto.setStatus(ApprovalStatus.EXPIRED);
+            }
+        });
 
-        if (StrUtil.isNotBlank(agentId)) {
-            wrapper.eq(ApprovalRequestDO::getAgentId, agentId);
-        }
-
-        // 支持审批ID模糊查询
-        if (StrUtil.isNotBlank(approvalId)) {
-            wrapper.like(ApprovalRequestDO::getId, approvalId);
-        }
-
-        wrapper.orderByDesc(ApprovalRequestDO::getCreatedAt);
-
-        Page<ApprovalRequestDO> entityPage = new Page<>(page.getCurrent(), page.getSize());
-        Page<ApprovalRequestDO> result = approvalMapper.selectPage(entityPage, wrapper);
-
-        return result.convert(this::toDTO);
+        return result;
     }
 
     @Override
@@ -126,19 +132,17 @@ public class ApprovalServiceImpl implements ApprovalService {
 
         approvalMapper.updateById(approvalDO);
 
-        // 更新关联的日志状态为 APPROVED
-        try {
-            agentLogService.updateStatusByApprovalRequestId(id, ResponseStatus.APPROVED);
-            log.info("已更新审批请求 {} 关联的日志状态为 APPROVED", id);
-        } catch (Exception e) {
-            log.error("更新日志状态失败: approvalId={}, error={}", id, e.getMessage(), e);
-        }
-
         // 发布审批通过事件，事件监听器会在事务提交后异步执行原始请求
         log.info("发布审批通过事件: approvalId={}", id);
         eventPublisher.publishEvent(new ApprovalApprovedEvent(this, id));
 
-        return toDTO(approvalDO);
+        ApprovalDTO result = approvalMapper.selectByIdWithNames(id);
+        if (result != null && result.getStatus() == ApprovalStatus.PENDING
+                && result.getExpiresAt() != null
+                && LocalDateTime.now().isAfter(result.getExpiresAt())) {
+            result.setStatus(ApprovalStatus.EXPIRED);
+        }
+        return result;
     }
 
     @Override
@@ -168,7 +172,13 @@ public class ApprovalServiceImpl implements ApprovalService {
             log.error("发送拒绝通知失败: approvalId={}, error={}", id, e.getMessage(), e);
         }
 
-        return toDTO(approvalDO);
+        ApprovalDTO result = approvalMapper.selectByIdWithNames(id);
+        if (result != null && result.getStatus() == ApprovalStatus.PENDING
+                && result.getExpiresAt() != null
+                && LocalDateTime.now().isAfter(result.getExpiresAt())) {
+            result.setStatus(ApprovalStatus.EXPIRED);
+        }
+        return result;
     }
 
     @Override
@@ -281,7 +291,14 @@ public class ApprovalServiceImpl implements ApprovalService {
         approvalMapper.updateById(approvalDO);
 
         log.info("审批请求 {} 已提交申请理由", id);
-        return toDTO(approvalDO);
+
+        ApprovalDTO result = approvalMapper.selectByIdWithNames(id);
+        if (result != null && result.getStatus() == ApprovalStatus.PENDING
+                && result.getExpiresAt() != null
+                && LocalDateTime.now().isAfter(result.getExpiresAt())) {
+            result.setStatus(ApprovalStatus.EXPIRED);
+        }
+        return result;
     }
 
     /**

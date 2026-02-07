@@ -23,6 +23,8 @@ import com.agentguard.log.mapper.AgentLogMapper;
 import com.agentguard.policy.entity.PolicyDO;
 import com.agentguard.policy.mapper.PolicyMapper;
 import com.agentguard.settings.dto.AlertSettingsDTO;
+import com.agentguard.settings.dto.EmailSettingsDTO;
+import com.agentguard.settings.dto.WebhookSettingsDTO;
 import com.agentguard.settings.service.SystemSettingsService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.agentguard.alert.enums.NotificationChannelType;
@@ -105,8 +107,8 @@ public class AlertServiceImpl implements AlertService {
      */
     private void sendAlertToAllChannels(AlertType type, String title, String content, String recipient) {
         // 获取webhook配置
-        var webhookSettings = systemSettingsService.getWebhookSettings();
-        var emailSettings = systemSettingsService.getEmailSettings();
+        WebhookSettingsDTO webhookSettings = systemSettingsService.getWebhookSettings();
+        EmailSettingsDTO emailSettings = systemSettingsService.getEmailSettings();
 
         // 收集所有启用的渠道和发送结果
         List<String> enabledChannels = new java.util.ArrayList<>();
@@ -240,7 +242,7 @@ public class AlertServiceImpl implements AlertService {
         }
 
         // 获取邮件配置中的默认收件人
-        var emailSettings = systemSettingsService.getEmailSettings();
+        EmailSettingsDTO emailSettings = systemSettingsService.getEmailSettings();
         String recipient = emailSettings.getDefaultRecipients();
         if (StrUtil.isBlank(recipient)) {
             recipient = defaultRecipient;
@@ -360,7 +362,7 @@ public class AlertServiceImpl implements AlertService {
         // 检查是否超过阈值
         if (errorRate >= effectiveThreshold) {
             // 获取邮件配置中的默认收件人
-            var emailSettings = systemSettingsService.getEmailSettings();
+            EmailSettingsDTO emailSettings = systemSettingsService.getEmailSettings();
             String recipient = emailSettings.getDefaultRecipients();
             if (StrUtil.isBlank(recipient)) {
                 recipient = defaultRecipient;
@@ -396,7 +398,7 @@ public class AlertServiceImpl implements AlertService {
         log.debug("开始发送审批提醒...");
 
         // 从系统设置获取告警配置
-        var alertSettings = systemSettingsService.getAlertSettings();
+        AlertSettingsDTO alertSettings = systemSettingsService.getAlertSettings();
 
         // 检查审批提醒是否启用
         if (!Boolean.TRUE.equals(alertSettings.getApprovalReminderEnabled())) {
@@ -436,7 +438,7 @@ public class AlertServiceImpl implements AlertService {
         log.info("发现{}个即将过期的审批请求，将发送汇总通知", pendingApprovals.size());
 
         // 获取邮件配置中的默认收件人
-        var emailSettings = systemSettingsService.getEmailSettings();
+        EmailSettingsDTO emailSettings = systemSettingsService.getEmailSettings();
         String recipient = emailSettings.getDefaultRecipients();
         if (StrUtil.isBlank(recipient)) {
             recipient = defaultRecipient;

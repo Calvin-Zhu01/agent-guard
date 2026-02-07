@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -33,4 +34,12 @@ public interface AgentPolicyBindingMapper extends BaseMapper<AgentPolicyBindingD
      */
     @Select("SELECT agent_id FROM agent_policy_binding WHERE policy_id = #{policyId}")
     List<String> selectAgentIdsByPolicyId(@Param("policyId") String policyId);
+
+    /**
+     * 批量查询Agent的策略绑定关系
+     *
+     * @param agentIds Agent ID集合
+     * @return 绑定关系列表
+     */
+    List<AgentPolicyBindingDO> selectByAgentIds(@Param("agentIds") Collection<String> agentIds);
 }

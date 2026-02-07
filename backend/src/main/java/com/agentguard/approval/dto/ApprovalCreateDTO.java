@@ -24,7 +24,4 @@ public class ApprovalCreateDTO {
     @Schema(description = "请求数据（JSON格式）", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "请求数据不能为空")
     private String requestData;
-
-    @Schema(description = "过期时间（分钟）")
-    private Integer expireMinutes;
 }

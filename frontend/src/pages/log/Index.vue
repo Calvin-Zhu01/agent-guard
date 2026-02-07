@@ -31,8 +31,8 @@ const responseStatusOptions = [
   { label: '失败', value: 'FAILED' },
   { label: '已拦截', value: 'BLOCKED' },
   { label: '待审批', value: 'PENDING_APPROVAL' },
-  { label: '已批准', value: 'APPROVED' },
-  { label: '已拒绝', value: 'REJECTED' }
+  { label: '已拒绝', value: 'REJECTED' },
+  { label: '已过期', value: 'EXPIRED' }
 ]
 
 const policyActionLabels: Record<PolicyAction, string> = {
@@ -213,15 +213,15 @@ function getStatusType(status: ResponseStatus): 'success' | 'warning' | 'danger'
   switch (status) {
     case 'SUCCESS':
       return 'success'
-    case 'APPROVED':
-      return 'success'
     case 'FAILED':
-      return 'warning'
+      return 'danger'
     case 'BLOCKED':
       return 'danger'
     case 'REJECTED':
-      return 'danger'
+      return 'warning'
     case 'PENDING_APPROVAL':
+      return 'info'
+    case 'EXPIRED':
       return 'info'
     default:
       return 'info'
@@ -232,8 +232,6 @@ function getStatusLabel(status: ResponseStatus): string {
   switch (status) {
     case 'SUCCESS':
       return '成功'
-    case 'APPROVED':
-      return '已批准'
     case 'FAILED':
       return '失败'
     case 'BLOCKED':
@@ -242,6 +240,8 @@ function getStatusLabel(status: ResponseStatus): string {
       return '已拒绝'
     case 'PENDING_APPROVAL':
       return '待审批'
+    case 'EXPIRED':
+      return '已过期'
     default:
       return status
   }
