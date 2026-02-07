@@ -30,7 +30,10 @@ public enum ResponseStatus {
     APPROVED("APPROVED", "审批通过"),
 
     /** 审批拒绝 */
-    REJECTED("REJECTED", "审批拒绝");
+    REJECTED("REJECTED", "审批拒绝"),
+
+    /** 已过期 */
+    EXPIRED("EXPIRED", "已过期");
 
     @EnumValue
     @JsonValue

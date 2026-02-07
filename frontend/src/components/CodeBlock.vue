@@ -109,5 +109,8 @@ const highlightedCode = computed(() => {
   line-height: 1.6;
   font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
   background: transparent;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  word-break: break-word;
 }
 </style>

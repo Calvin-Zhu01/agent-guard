@@ -174,12 +174,37 @@ public class ApprovalServiceImpl implements ApprovalService {
     @Override
     @Transactional
     public void expireOverdue() {
-        LambdaUpdateWrapper<ApprovalRequestDO> wrapper = new LambdaUpdateWrapper<>();
-        wrapper.eq(ApprovalRequestDO::getStatus, ApprovalStatus.PENDING)
-               .lt(ApprovalRequestDO::getExpiresAt, LocalDateTime.now())
-               .set(ApprovalRequestDO::getStatus, ApprovalStatus.EXPIRED);
+        // 1. 查询所有过期的待审批记录
+        LambdaQueryWrapper<ApprovalRequestDO> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(ApprovalRequestDO::getStatus, ApprovalStatus.PENDING)
+                   .lt(ApprovalRequestDO::getExpiresAt, LocalDateTime.now());
 
-        approvalMapper.update(null, wrapper);
+        java.util.List<ApprovalRequestDO> expiredApprovals = approvalMapper.selectList(queryWrapper);
+
+        if (expiredApprovals.isEmpty()) {
+            log.debug("没有过期的审批记录");
+            return;
+        }
+
+        log.info("发现 {} 条过期的审批记录，开始批量更新", expiredApprovals.size());
+
+        // 2. 批量更新审批状态
+        LambdaUpdateWrapper<ApprovalRequestDO> updateWrapper = new LambdaUpdateWrapper<>();
+        updateWrapper.eq(ApprovalRequestDO::getStatus, ApprovalStatus.PENDING)
+                   .lt(ApprovalRequestDO::getExpiresAt, LocalDateTime.now())
+                   .set(ApprovalRequestDO::getStatus, ApprovalStatus.EXPIRED);
+
+        int updatedCount = approvalMapper.update(null, updateWrapper);
+        log.info("已更新 {} 条审批记录状态为 EXPIRED", updatedCount);
+
+        // 3. 同步更新关联的日志状态
+        for (ApprovalRequestDO approval : expiredApprovals) {
+            try {
+                agentLogService.updateStatusByApprovalRequestId(approval.getId(), ResponseStatus.EXPIRED);
+            } catch (Exception e) {
+                log.error("更新审批 {} 关联的日志状态失败: {}", approval.getId(), e.getMessage(), e);
+            }
+        }
     }
 
     @Override

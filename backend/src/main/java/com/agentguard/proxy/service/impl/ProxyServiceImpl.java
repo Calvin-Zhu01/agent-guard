@@ -46,6 +46,7 @@ import java.math.BigDecimal;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -980,15 +981,23 @@ public class ProxyServiceImpl implements ProxyService {
 
         if (e instanceof ResourceAccessException) {
             // 网络错误或超时
+            Map<String, Object> errorDetail = Map.of(
+                    "error", "目标服务不可达或超时",
+                    "errorType", "ResourceAccessException",
+                    "message", e.getMessage(),
+                    "targetUrl", request.getTargetUrl(),
+                    "timestamp", LocalDateTime.now().toString()
+            );
             responseBuilder
                     .statusCode(504)
-                    .message("目标服务不可达或超时");
+                    .message("目标服务不可达或超时")
+                    .response(errorDetail);
         } else if (e instanceof HttpClientErrorException) {
             // 4xx 错误
             HttpClientErrorException clientError = (HttpClientErrorException) e;
             Object responseData = null;
             String responseBody = clientError.getResponseBodyAsString();
-            
+
             // 尝试解析响应体为 JSON
             if (StrUtil.isNotBlank(responseBody)) {
                 try {
@@ -998,7 +1007,7 @@ public class ProxyServiceImpl implements ProxyService {
                     responseData = responseBody;
                 }
             }
-            
+
             responseBuilder
                     .statusCode(clientError.getStatusCode().value())
                     .message("目标服务返回客户端错误")
@@ -1008,7 +1017,7 @@ public class ProxyServiceImpl implements ProxyService {
             HttpServerErrorException serverError = (HttpServerErrorException) e;
             Object responseData = null;
             String responseBody = serverError.getResponseBodyAsString();
-            
+
             // 尝试解析响应体为 JSON
             if (StrUtil.isNotBlank(responseBody)) {
                 try {
@@ -1018,7 +1027,7 @@ public class ProxyServiceImpl implements ProxyService {
                     responseData = responseBody;
                 }
             }
-            
+
             responseBuilder
                     .statusCode(serverError.getStatusCode().value())
                     .message("目标服务返回服务器错误")
@@ -1026,14 +1035,28 @@ public class ProxyServiceImpl implements ProxyService {
         } else if (e instanceof BusinessException) {
             // 业务异常（如 URL 验证失败）
             BusinessException bizError = (BusinessException) e;
+            Map<String, Object> errorDetail = Map.of(
+                    "error", bizError.getMessage(),
+                    "errorType", "BusinessException",
+                    "errorCode", bizError.getCode(),
+                    "timestamp", LocalDateTime.now().toString()
+            );
             responseBuilder
                     .statusCode(400)
-                    .message(bizError.getMessage());
+                    .message(bizError.getMessage())
+                    .response(errorDetail);
         } else {
             // 其他未知异常
+            Map<String, Object> errorDetail = Map.of(
+                    "error", "内部代理错误",
+                    "errorType", e.getClass().getSimpleName(),
+                    "message", e.getMessage() != null ? e.getMessage() : "未知错误",
+                    "timestamp", LocalDateTime.now().toString()
+            );
             responseBuilder
                     .statusCode(500)
-                    .message("内部代理错误");
+                    .message("内部代理错误")
+                    .response(errorDetail);
         }
 
         return responseBuilder.build();
@@ -1141,7 +1164,10 @@ public class ProxyServiceImpl implements ProxyService {
      */
     private ProxyResponseDTO handleLlmForwardingError(Exception e, String llmUrl) {
         log.error("URL {} 的LLM请求转发失败: {}", llmUrl, e.getMessage());
-        return handleForwardingError(e, new ProxyRequestDTO());
+        // 创建一个包含目标URL的请求对象，以便在错误详情中记录
+        ProxyRequestDTO requestDTO = new ProxyRequestDTO();
+        requestDTO.setTargetUrl(llmUrl);
+        return handleForwardingError(e, requestDTO);
     }
 
     /**

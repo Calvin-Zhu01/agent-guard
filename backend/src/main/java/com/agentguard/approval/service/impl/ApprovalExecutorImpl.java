@@ -118,11 +118,25 @@ public class ApprovalExecutorImpl implements ApprovalExecutor {
         } catch (Exception e) {
             log.error("审批请求执行失败: approvalId={}, error={}", approvalId, e.getMessage(), e);
 
+            // 构建错误信息
+            Map<String, Object> errorResult = Map.of(
+                    "error", e.getMessage(),
+                    "errorType", e.getClass().getSimpleName(),
+                    "timestamp", LocalDateTime.now().toString()
+            );
+
             // 更新执行状态为失败
             approval.setExecutionStatus(ExecutionStatus.FAILED);
-            approval.setExecutionResult(JSONUtil.toJsonStr(Map.of("error", e.getMessage())));
+            approval.setExecutionResult(JSONUtil.toJsonStr(errorResult));
             approval.setExecutedAt(LocalDateTime.now());
             approvalMapper.updateById(approval);
+
+            // 更新关联的日志响应体，保存错误信息
+            try {
+                agentLogService.updateResponseBodyByApprovalRequestId(approvalId, JSONUtil.toJsonStr(errorResult));
+            } catch (Exception logUpdateException) {
+                log.error("更新日志响应体失败: approvalId={}, error={}", approvalId, logUpdateException.getMessage(), logUpdateException);
+            }
 
             // 发送执行失败通知
             sendExecutionFailureNotification(approvalId, e.getMessage());
